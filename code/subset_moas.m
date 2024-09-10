@@ -296,7 +296,7 @@ if prepare_loocv
         mkgctx(fullfile(loo_wkdir, corr_for_loo_cmpd_savepath),grzs_corr_loo_cmpd);
         mkgctx(fullfile(loo_wkdir, corr_for_loo_cmpd_to_remaining_kabx_savepath),grzs_corr_loo_cmpd_to_remaining_kabx);
 
-        moas_remaining_kabx = tbl2gmt(table2struct(col_meta_for_pcls_remaining_kabx),'group_field','pcl_desc','desc_field','pcl_desc','member_field','cid');
+        moas_remaining_kabx = tbl2gmt(table2struct(sortrows(col_meta_for_pcls_remaining_kabx, {'pcl_desc'})),'group_field','pcl_desc','desc_field','pcl_desc','member_field','cid');
 
         idx = ismember({moas_remaining_kabx.head}, filter_moa_annotations);
         sum(idx);
