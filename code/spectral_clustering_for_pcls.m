@@ -1,22 +1,28 @@
-function [out_nonsingle,out,gmt] = spectral_clustering_for_pcls(c,cr,moa_class,thrsh,k_type,outdir,save_out,save_fig)
+function [out_nonsingle,out,gmt] = spectral_clustering_for_pcls(c,cr,moa_class,thrsh,k_type,outdir,save_out,save_fig,random_seed)
 	
 	% Run spectral clustering on a correlation rank matrix for a given class of compounds
-	% [OUT_NONSINGLE,OUT,GMT] = SPECTRAL_CLUST_FOR_PCLS(C,CR,MOA_CLASS,THRSH,OUTDIR,SAVE_OUT,SAVE_FIG)
+	% [OUT_NONSINGLE,OUT,GMT] = SPECTRAL_CLUSTERING_FOR_PCLS(C,CR,MOA_CLASS,THRSH,OUTDIR,SAVE_OUT,SAVE_FIG)
 	%
 	% Inputs:
 	% c - correlation coefficients for all members of the MoA class (gct structure or string)
 	% cr - rank of correlation coefficients for all members of the MoA class (gct structure or string)
 	% moa_class - MoA class (string)
 	% thrsh - threshold to convert cr to adjacency matrix (numeric)
+	% k_type - approach for estimating number of K clusters
 	% outdir - output directory to save outputs (string)
 	% save_out - variable if output tables should be saved (logical)
 	% save_fig - variable if ouput figures should be saved (logical)
+	% random_seed - specified seed for initializing the random number generator, Matlab factory default is the Mersenne Twister generator with seed 0; can be used to repeat spectral clustering for different random seeds (k-means++ algorithm involves random sampling/centroid initialization)
 	
 	%% Added by AB on 06/11/2024
 	% Removed multiple k-means iterations
 	% Single iteration with fixed random state instead
-
-	rng(0, 'twister'); % default Matlab seed and rng for reproducibility
+    
+	% Set random_seed number if not provided in the input
+	if isempty(random_seed)
+		random_seed = 0;
+	end
+	rng(random_seed, 'twister'); % set seed and rng for reproducibility; rng(0, 'twister') is the Matlab factory default
 
 	% Parse gctx with correlation matrix if not provided in the input
 	if isstr(c)
