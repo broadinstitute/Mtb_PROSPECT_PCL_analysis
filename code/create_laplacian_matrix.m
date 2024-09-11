@@ -59,10 +59,12 @@ end
 
 if make_fig
 	figure
-	    plot(en,'o-')
+	    plot(en,'o-', 'DisplayName','Eigenvalue')
 	    hold on 
-	    plot(den,'o-')
-	    plot([k,k],ylim)
+	    plot(den,'o-', 'DisplayName',sprintf('Difference in\nconsecutive\neigenvalues'))
+	    plot([k,k],ylim, 'DisplayName',sprintf('Selected k'))
 		yl = ylim;
-		text(k+5,yl(2)*0.95,sprintf('k: %d',k),'interpreter','none','FontSize',12)
+		text(k+0.5,yl(2)*0.95,sprintf('k: %d',k),'interpreter','none','FontSize',12)
+		legend('show', 'Location', 'east', 'FontSize', 12, 'TextColor', 'black', 'Box', 'off')
+		xlabel(sprintf('Number of eigenvectors\n(sorted from lowest to highest eigenvalue)'))
 end
