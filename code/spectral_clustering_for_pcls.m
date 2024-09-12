@@ -1,4 +1,4 @@
-function [out_nonsingle,out,gmt] = spectral_clustering_for_pcls(c,cr,moa_class,thrsh,k_type,outdir,save_out,save_fig,random_seed)
+function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_plus_one,k_num_zero] = spectral_clustering_for_pcls(c,cr,moa_class,thrsh,k_type,outdir,save_out,save_fig,random_seed)
 	
 	% Run spectral clustering on a correlation rank matrix for a given class of compounds
 	% [OUT_NONSINGLE,OUT,GMT] = SPECTRAL_CLUSTERING_FOR_PCLS(C,CR,MOA_CLASS,THRSH,OUTDIR,SAVE_OUT,SAVE_FIG)
@@ -29,7 +29,7 @@ function [out_nonsingle,out,gmt] = spectral_clustering_for_pcls(c,cr,moa_class,t
     
 	% Set random_seed number if not provided in the input
 	if isempty(random_seed)
-		random_seed = 0;
+		random_seed = 0; 
 	end
 	rng(random_seed, 'twister'); % set seed and rng for reproducibility; rng(0, 'twister') is the Matlab factory default
 
@@ -46,14 +46,22 @@ function [out_nonsingle,out,gmt] = spectral_clustering_for_pcls(c,cr,moa_class,t
 	% Set threshold for the rank if not provided in the input
 	if isempty(thrsh)
 		%thrsh = numel(cr.rid)*1;
+		%thrsh = round(log(numel(cr.rid)) * 20);
 		thrsh = 20;
 	end
 	
 	% Create adjacency matrix
 	adj_mat = double(cr.mat<=thrsh);
 
-	% Normalized Laplacian
-	[L,k] = create_laplacian_matrix(adj_mat,'symmetric',true,k_type);
+	% Normalized Laplacian and find eigenvalues and eigenvectors to estimate number of K clusters in MOA class
+	[Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_plus_one,k_num_zero] = create_laplacian_matrix(adj_mat,'symmetric',true,k_type);
+	%moa_class_str = strrep(strrep(moa_class,' ','_'),'/','-');
+    %saveas_png(gcf,outdir,[moa_class_str,'_eigenvalues.png'])
+    %close(gcf)
+
+	% Create blue-white-red colormap
+	bwr_colormap = [linspace(0, 1, 128)', linspace(0, 1, 128)', ones(128, 1); ...
+	ones(128, 1), linspace(1, 0, 128)', linspace(1, 0, 128)'];
 
 	figure
 	    set(gcf,'PaperPosition',[0,0,20,40])
@@ -61,18 +69,19 @@ function [out_nonsingle,out,gmt] = spectral_clustering_for_pcls(c,cr,moa_class,t
     
 	    s1 = subplot(5,2,1);
 	    imagesc(c.mat)
-	    colormap(s1,jet)
+	    colormap(s1,bwr_colormap)
 	    caxis([-1,1])
 	    colorbar
 	    title('Pearson correlation')
     
 	    s2 = subplot(5,2,2);
 	    imagesc(cr.mat)
-	    colormap(s2,flip(parula))
+		%colormap(s2,flip(hot))
+	    colormap(s2,hot)
 	    %caxis([0,thrsh*2])
 		caxis([0,thrsh+1])
 	    colorbar
-	    title('Average rank in Pearson correlation across KABX')
+	    title(sprintf('Average rank in Pearson\ncorrelation across KABX'))
 
 		s3 = subplot(5,2,3);
 		imagesc(adj_mat)
@@ -82,68 +91,111 @@ function [out_nonsingle,out,gmt] = spectral_clustering_for_pcls(c,cr,moa_class,t
 		title(sprintf('Adjacency matrix\n(thresholded at %d)', thrsh))
     
 	    s4 = subplot(5,2,4);
-	    imagesc(L)
+	    imagesc(Ln)
 	    colormap(s4,jet)
-	    caxis([min(L,[],'all'),max(L,[],'all')])
+	    caxis([min(Ln,[],'all'),max(Ln,[],'all')])
 	    colorbar
-	    title('Laplacian matrix\n(normalized via Ng-Jordan-Weiss method)')
+	    title(sprintf('Laplacian matrix\n(normalized via Ng-Jordan-Weiss method)'))
+
+		s5 = subplot(5,2,5);
+	    plot(en,'o-', 'DisplayName','Eigenvalue')
+	    hold on 
+	    plot(den,'o-', 'DisplayName',sprintf('Difference in\nconsecutive\neigenvalues'))
+	    plot([k,k],ylim, 'DisplayName',sprintf('Selected k'))
+		yl = ylim;
+		text(k+0.5,yl(2)*0.95,sprintf('k: %d',k),'interpreter','none','FontSize',12)
+		legend('show', 'Location', 'east', 'FontSize', 12, 'TextColor', 'black', 'Box', 'off')
+		xlabel(sprintf('Number of eigenvectors\n(sorted from lowest to highest eigenvalue)'))
 
 	[idx,eigenvec,eigenval] = spectralcluster(adj_mat,k,'Distance','precomputed','LaplacianNormalization','symmetric');
 	tmp = repmat(idx,1,size(adj_mat,2));
 	tmp_plot = tmp;
-	tmp = tmp==tmp';
+	tmp = tmp==tmp'; % symmetric, block, logical matrix where 1 means the two treatments are in the same cluster, 0 otherwise
 	tmp_g = graph(double(tmp),'omitselfloops');
-    
-	    s5 = subplot(5,2,5);
-	    plot(tmp_g)
-	    f = findobj(s5);
-	    f(2).NodeFontSize = 6;
-	    title(sprintf('Graphs from spectral clustering (k = %d)', k))
-    
-	    %s6 = subplot(5,2,6);
-	    %imagesc(tmp)
-	    %colormap(s6,[1,1,1; 1,0,0]) % 1 for treatments in cluster together, 0 for treatments in different clusters
-	    %caxis([0,1])
-	    %colorbar('Ticks', [0, 1], 'TickLabels', {'0', '1'})  % Set colorbar ticks and labels
-	    %title(sprintf('Clusters from spectral clustering (k = %d)',k))
 
-		s6 = subplot(5,2,6);
-	    imagesc(tmp_plot)
-	    colormap(s6, jet(k)) % different color for each cluster ID
-	    caxis([1,k])
-	    colorbar 
-	    title(sprintf('Clusters from spectral clustering (k = %d)',k))
-		
 	% Create output tables
 	col_meta_tmp = cell2table([cr.cid,cr.cdesc],'VariableNames',['cid';cr.chd]);
-
-	cluster_id = conncomp(tmp_g)';
+	
+	cluster_id = conncomp(tmp_g)'; % get cluster numbers (ids) for each treatment, note: these are different numerically than idx (from spectralcluster) but the same in terms of cluster membership; the actual number/id is arbitrary
 	out = table(cluster_id);
 
-	%%% FIRST: Annotate the treatment/cid accurately before anything else
+	%%% Annotate the treatment/cid
 	out.cid = cr.rid;
-	%%% Fix added by AB on 06/11/2024
 
 	cluster_size = array2table(tabulate(cluster_id),'VariableNames',{'cluster_id','cluster_size','percent'});
 	cluster_size.percent = [];
-	out = outerjoin(out,cluster_size,'Keys','cluster_id','MergeKeys',true,'Type','left');
+	out = outerjoin(out,cluster_size,'Keys','cluster_id','MergeKeys',true,'Type','left'); % outerjoin operation automatically re-sorts the rows by the key (cluster_id)
 	out.moa_class = repmat({moa_class},size(out,1),1);
 	out = join(out,col_meta_tmp,'Keys','cid');
 
-	%%% AB add cluster membership error check on 06/11/2024 %
-	%checkOutTable = sortrows(out(:, {'cid', 'cluster_id'}), {'cluster_id', 'cid'});
+	%%% Cluster membership error check - check cluster ids are accurately annotated to treatment after outerjoin operation %%%
+	checkOutTable = sortrows(out(:, {'cid', 'cluster_id'}), {'cluster_id', 'cid'});
 
-	%checkTable = table(cr.cid, cluster_id, 'VariableNames', {'cid', 'cluster_id'});
+	checkTable = table(cr.cid, cluster_id, 'VariableNames', {'cid', 'cluster_id'});
 
-	%checkTable = sortrows(checkTable, {'cluster_id', 'cid'});
+	checkTable = sortrows(checkTable, {'cluster_id', 'cid'});
 
-	%assert(isequal(checkOutTable, checkTable), 'The tables are not identical.');
+	assert(isequal(checkOutTable, checkTable), 'The tables are not identical.');
 	%%%
+	
+	% Create block matrix with clusters aligned along the diagonal
+	tmp_cluster_id = repmat(cluster_id,1,size(adj_mat,2)); % repeat the cluster_id vector rowwise to create a matrix
+	
+	tmp_cluster_id(~tmp) = 0; % apply the logical, block matrix to set the treatments that are not in the same cluster to 0 and keep the treatments that are in the same cluster as the numeric cluster_id
+	
+	[sortedLabels, sortOrder] = sort(cluster_id);
 
-	idx = out.cluster_size>1;
+	tmp_cluster_id_sorted_by_cluster = tmp_cluster_id(sortOrder, sortOrder); % sort the block matrix by cluster_id so that clusters are aligned along the diagonal
+	
+	c_mat_sorted_by_cluster = c.mat(sortOrder, sortOrder); % sort the correlation matrix by cluster_id so that clusters are aligned along the diagonal
+	
+	cr_mat_sorted_by_cluster = cr.mat(sortOrder, sortOrder); % sort the correlation rank matrix by cluster_id so that clusters are aligned along the diagonal
+
+    
+		s6 = subplot(5,2,6);
+		imagesc(tmp_cluster_id)
+		colormap(s6, colorcube(k+1)) % different color for each cluster ID
+	    %colormap(s6, lines(k+1)) % different color for each cluster ID
+		caxis([0,k])
+		colorbar 
+		title(sprintf('Clusters from spectral clustering (k = %d)\n(original treatment order)',k))
+
+		s7 = subplot(5,2,7);
+		plot(tmp_g)
+		f = findobj(s7);
+		f(2).NodeFontSize = 6;
+		title(sprintf('Graphs from spectral clustering (k = %d)\n(row index is original treatment order)', k))
+		
+		s8 = subplot(5,2,8);
+		imagesc(tmp_cluster_id_sorted_by_cluster)
+		colormap(s8, colorcube(k+1)) % different color for each cluster ID
+	    %colormap(s8, lines(k+1)) % different color for each cluster ID
+		caxis([0,k])
+		colorbar 
+		title(sprintf('Clusters from spectral clustering (k = %d)\n(re-sorted by cluster)',k))
+		
+		s9 = subplot(5,2,9);
+		imagesc(c_mat_sorted_by_cluster)
+		colormap(s9,bwr_colormap)
+		caxis([-1,1])
+		colorbar
+		title(sprintf('Pearson correlation\n(re-sorted by cluster)'))
+		
+		s10 = subplot(5,2,10);
+		imagesc(cr_mat_sorted_by_cluster)
+		%colormap(s10,flip(hot))
+		colormap(s10,hot)
+		%caxis([0,thrsh*2])
+		caxis([0,thrsh+1])
+		colorbar
+		title(sprintf('Average rank in Pearson\ncorrelation across KABX\n(re-sorted by cluster)'))
+
+
+    out.group_id = strcat(moa_class,':group',any2str(out.cluster_id));
+	idx = out.cluster_size>1; % only keep clusters with more than one treatment
 	if sum(idx)>0
 		out_nonsingle = out(idx,:);
-		out_nonsingle.group_id = strcat(moa_class,':group',any2str(out_nonsingle.cluster_id));
+		%out_nonsingle.group_id = strcat(moa_class,':group',any2str(out_nonsingle.cluster_id));
 
 		% Create gmt file
 		gmt = tbl2gmt(table2struct(out_nonsingle),'group_field','group_id','desc_field','moa_class','member_field','cid');
