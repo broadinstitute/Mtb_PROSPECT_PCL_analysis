@@ -191,7 +191,7 @@ for jj = 1:numel(clusters)
 
     tmp_tbl.cluster_size_actual = repmat(sum(cidx), num_cids, 1);
 
-    tmp_tbl.cluster_cids = repmat({stringify(unique(c.cdesc(cidx,c.cdict('id'))))}, num_cids, 1);
+    tmp_tbl.cluster_cids = repmat({stringify(unique(c.cid(cidx)))}, num_cids, 1);
     tmp_tbl.cluster_proj_broad_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('proj_broad_id'))))}, num_cids, 1);
     tmp_tbl.cluster_broad_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('broad_id'))))}, num_cids, 1);
     tmp_tbl.cluster_pert_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('pert_id'))))}, num_cids, 1);
