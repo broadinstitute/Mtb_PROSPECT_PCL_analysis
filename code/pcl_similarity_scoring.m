@@ -1,4 +1,4 @@
-function pcl_similarity_scoring(clusters_path,c_path,c_rank_path,col_meta_path,fgr_path,wkdir,min_clust_size)
+function pcl_similarity_scoring(clusters_path,c_path,c_rank_path,col_meta_path,fgr_path,wkdir,min_clust_size, col_meta_kabx_path, print_multi_target)
 
 % PCL_SIMILARITY_SCORING(CLUSTERS_PATH,DS_CORR,DS_CORR_RANK,COL_META,FGR,WKDIR,MIN_CLUST_SIZE)
 % Set initial variables
@@ -104,6 +104,8 @@ assert(all(diag(c.mat) == 1))
 assert(all(diag(c_rank.mat) == 1))
 
 % Set the diagonal of the matrix to all NaN values
+% - this will exclude self-similarity when calculating the median correlation of a treatment
+% to a PCL that it is a member of
 c.mat(eye(size(c.mat))==1) = NaN;
 
 c_rank.mat(eye(size(c_rank.mat))==1) = NaN;
@@ -251,60 +253,150 @@ for ii = 1:numel(fields)
     idx = ismember(out_tbl.rid,cid1)&ismember(out_tbl.cluster_id,rid1);
     assert(sum(idx)>0,'Rows or columns of the gct structure do not match');
     assert(out_tbl.(fields{ii})(idx)==corr1,'Value in the matrix do not match the one in the table');
-    mkgctx(fullfile(wkdir,['clusters_',fields{ii},'.gctx']), ds_tmp)
+    mkgctx(fullfile(wkdir,['cluster_',fields{ii},'.gctx']), ds_tmp)
 end
 
 % Section to check clusters for their most similar KABX dsCGI profile and define them as PCLs if the profiles are in-MOA (share same MOA as PCL)
-% and exclude them as uninterpretable clusters otherwise
+% and exclude them as uninterpretable clusters for MOA prediction otherwise
 
 % Parse gctx with the cluster similarity score
 g = glob(fullfile(wkdir,'cluster_median_corr_n*.gctx'))
-s = parse_gctx(g{1});
+ss_all = parse_gctx(g{1}); % cluster similarity score of all treatments
 
-% Select profiles with annotated MOA from KABX
-cidx = ~cellfun(@isempty,s.cdesc(:,s.cdict('target_description')));
-sum(cidx)
+col_meta_ss_all = cell2table([ss_all.cid,ss_all.cdesc],'VariableNames',['cid';ss_all.chd]);
+col_meta_ss_all.target_description = any2str(col_meta_ss_all.target_description);
+headt(col_meta_ss_all)
+unique(col_meta_ss_all.target_description)
 
-ss = ds_slice(s,'cidx',cidx)
+row_meta_ss_all = cell2table([ss_all.rid,ss_all.rdesc],'VariableNames',['rid';ss_all.rhd]);
+row_meta_ss_all.cluster_desc = any2str(row_meta_ss_all.cluster_desc);
+headt(row_meta_ss_all)
+unique(row_meta_ss_all.cluster_desc)
 
-col_meta_ss = cell2table([ss.cid,ss.cdesc],'VariableNames',['cid';ss.chd]);
-col_meta_ss.target_description = any2str(col_meta_ss.target_description);
-headt(col_meta_ss)
-unique(col_meta_ss.target_description)
+[a,b] = ind2sub(size(ss_all.mat),1:numel(ss_all.mat));
 
-row_meta_ss = cell2table([ss.rid,ss.rdesc],'VariableNames',['rid';ss.rhd]);
-row_meta_ss.pcl_desc = any2str(row_meta_ss.pcl_desc);
-headt(row_meta_ss)
-unique(row_meta_ss.pcl_desc)
+ss_all_tbl = [col_meta_ss_all(b,:),row_meta_ss_all(a,:)];
+size(ss_all_tbl)
+ss_all_tbl.similarity_score = ss_all.mat(:);
 
-[a,b] = ind2sub(size(ss.mat),1:numel(ss.mat));
+ss_all_same_moa = ss_all;
+ss_all_same_moa.mat = zeros(size(ss_all.mat));
+target_desc = ss_all_same_moa.cdesc(:, ss_all_same_moa.cdict('target_description'));
 
-ss_tbl = [col_meta_ss(b,:),row_meta_ss(a,:)];
-size(ss_tbl)
-ss_tbl.pcl_score = ss.mat(:);
+% Set print_multi_target if not provided in the input
+if isempty(print_multi_target)
+	print_multi_target = false; 
+end
 
-ss_same_moa = ss;
-ss_same_moa.mat = zeros(size(ss.mat));
-target_desc = ss_same_moa.cdesc(:, ss_same_moa.cdict('target_description'));
-
-for ii = 1:numel(ss_same_moa.rid)
-    pcl_desc = ss_same_moa.rdesc(ii,ss_same_moa.rdict('pcl_desc'));
-    %ss_same_moa.mat(ii,:) = ismember(target_desc,pcl_desc);
-    %ss_same_moa.mat(ii,:) = contains(target_desc,pcl_desc);
-    ss_same_moa.mat(ii,:) = ismember(target_desc,pcl_desc) | (contains(target_desc, '|') & contains(target_desc,pcl_desc));
+for ii = 1:numel(ss_all_same_moa.rid)
+    cluster_desc = ss_all_same_moa.rdesc(ii,ss_all_same_moa.rdict('cluster_desc'));
+    %ss_all_same_moa.mat(ii,:) = ismember(target_desc,cluster_desc);
+    %ss_all_same_moa.mat(ii,:) = contains(target_desc,cluster_desc);
+    ss_all_same_moa.mat(ii,:) = ismember(target_desc,cluster_desc) | (contains(target_desc, '|') & contains(target_desc,cluster_desc));
     
-    %check_matches = target_desc(~ismember(target_desc,pcl_desc) & contains(target_desc,pcl_desc));
-    check_matches = target_desc(~ismember(target_desc,pcl_desc) & (contains(target_desc, '|') & contains(target_desc,pcl_desc)));
+    %check_matches = target_desc(~ismember(target_desc,cluster_desc) & contains(target_desc,cluster_desc));
+    check_matches = target_desc(~ismember(target_desc,cluster_desc) & (contains(target_desc, '|') & contains(target_desc,cluster_desc)));
     
     if print_multi_target & length(check_matches) > 0
-        pcl_desc
+        cluster_desc
         check_matches
     end
 end
 
-sum(ss_same_moa.mat,'all')
+sum(ss_all_same_moa.mat,'all')
 
-ss_tbl.pcl_and_moa_agree = ss_same_moa.mat(:);
+ss_all_tbl.cluster_and_moa_agree = ss_all_same_moa.mat(:);
+
+
+% Load KABX column metadata
+if isstr(col_meta_kabx_path)
+	col_meta_kabx = rtable(col_meta_kabx_path);
+end
+
+% Select profiles with annotated MOA from KABX
+% cidx = ~cellfun(@isempty,s.cdesc(:,s.cdict('target_description')));
+%cidx = ismember(s.cid, col_meta_kabx.cid);
+cidx = ismember(ss_all_tbl.cid, col_meta_kabx.cid);
+sum(cidx)
+
+%ss_kabx = ds_slice(ss_all,'cidx',cidx)
+ss_kabx_tbl = ss_all_tbl(cidx,:);
+
+size(ss_all_tbl)
+
+numel(unique(ss_all_tbl.pert_id))
+numel(unique(ss_all_tbl.broad_id))
+numel(unique(ss_all_tbl.proj_broad_id))
+numel(unique(ss_all_tbl.cid))
+sum(ss_all_tbl.cluster_and_moa_agree)
+
+size(ss_kabx_tbl)
+
+numel(unique(ss_kabx_tbl.pert_id))
+numel(unique(ss_kabx_tbl.broad_id))
+numel(unique(ss_kabx_tbl.proj_broad_id))
+numel(unique(ss_kabx_tbl.cid))
+sum(ss_kabx_tbl.cluster_and_moa_agree)
+
+
+cluster_list = unique(ss_kabx_tbl.rid);
+length(cluster_list)
+
+moa_cluster_list = unique(ss_kabx_tbl.cluster_desc);
+length(moa_cluster_list)
+
+% filter out MOA in-separable PCLs prior to iterating
+
+% Find the row with the maximum similarity_score for each rid
+
+maxSimilarityScore = groupsummary(ss_kabx_tbl, 'rid', @max, 'similarity_score');
+
+size(maxSimilarityScore)
+
+head(maxSimilarityScore)
+
+size(ss_kabx_tbl)
+
+ss_kabx_tbl = innerjoin(ss_kabx_tbl, maxSimilarityScore, 'Keys', 'rid');
+
+size(ss_kabx_tbl)
+
+headt(ss_kabx_tbl)
+
+% Get the rows with the maximum similarity_score
+maxRows = ss_kabx_tbl(ss_kabx_tbl.similarity_score >= ss_kabx_tbl.fun1_similarity_score,:);
+
+size(maxRows)
+
+headt(maxRows)
+
+% Find the rows where cluster_and_moa_agree = 1
+pclListRows = maxRows(maxRows.cluster_and_moa_agree == 1,:);
+
+% Get the rids of these rows
+pcl_list = unique(pclListRows.rid);
+
+length(pcl_list)
+
+moa_pcl_list = unique(pclListRows.cluster_desc);
+length(moa_pcl_list)
+
+% Remove clusters whose most similar KABX dsCGI profile is of a different MOA reflecting signal not specific to one particular MOA
+% while clusters whose most similar KABX dsCGI profile is in-MOA are defined as PCL clusters and used for making MOA predictions
+num_clusters_ini = length(cluster_list);
+num_pcl_clusters = length(pcl_list);
+num_uninterpretable_clusters = num_clusters_ini - num_pcl_clusters;
+disp(sprintf('The initial number of clusters is %d', num_clusters_ini))
+disp(sprintf('Removing %d uninterpretable clusters with most similar KABX dsCGI profile out of MOA', num_uninterpretable_clusters))
+disp(sprintf('The remaining number of PCL clusters is %d', num_pcl_clusters))
+
+pcls = parse_gmt(clusters_path);
+pcls(~ismember(pcls.head, pcl_list)) = []; % remove uninterpretable clusters 
+pcls_tbl = struct2table(pcls);
+headt(pcls_tbl)
+size(pcls_tbl)
+
+mkgmt(fullfile(wkdir, 'pcls.gmt'), pcls)
 
 
 

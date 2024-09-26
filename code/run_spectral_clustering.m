@@ -48,6 +48,8 @@ save_out = true % save tabular and gmt files for each MOA separately with the ou
 
 rng_seed = 0; % specified seed for initializing the random number generator, Matlab factory default is the Mersenne Twister generator with seed 0 (see spectral_clustering_for_pcls.m for additional information)
 
+num_threads_for_multithreading = 4 % number of computational threads to use for multi-threading enabled Matlab functions including eigs; data was originally processed with 4 CPU cores or threads, this is set for reproducibility across CPU hardware
+
 thrsh_rank = 20 % threshold for average pairwise rank of correlation across KABX to connect treatments as mutual nearest-neighbors
 
 thrsh_factor = 1; % factor to multiply by thrsh_rank if dynamic_thrsh_per_moa is false; default is 1
@@ -56,6 +58,7 @@ dynamic_thrsh_per_moa = false % if true then threshold is round(log(size of MOA)
 
 k_type = 'k_med_gap_den' % eigengap heuristic to take for estimating number of K clusters: k_num_zero, k_num_zero_plus_one, k_med_gap_den, k_gap_den (see create_laplacian_matrix.m for additional information)
 
+show_hclust = true % if true then apply hierarchical clustering to correlation matrix prior to running spectral clustering, whether or not this is performed can minimally impact final cluster results especially for larger MOAs with greater number of K clusters due to stochasticity (randomized initialization) of k-means++ clustering; original results did apply hierarchical clustering but this step is not required for the method to be successful
 
 % outputs
 
@@ -74,6 +77,10 @@ clusters_tbl_incl_singletons_filename = 'clusters_spectral_clust_including_singl
 clusters_tbl_filename = 'clusters_spectral_clust.txt'
 
 clusters_gmt_filename = 'clusters_spectral_clust.gmt'
+
+disp(sprintf('Number of computational threads: %d', maxNumCompThreads));
+maxNumCompThreads(num_threads_for_multithreading); % to reproduce results set num_threads_for_multithreading to 4 as it was originally processed with 4 available CPU cores 
+disp(sprintf('Number of computational threads: %d', maxNumCompThreads));
 
 switch k_type
 case 'k_gap_den'
@@ -154,7 +161,7 @@ for ii = 1:numel(moas)
     
     % Run spectral clustering
     try
-        [spec(ii).tmp_out_nonsingle,spec(ii).tmp_out,spec(ii).tmp_gmt,L,out_lap(ii).k,en,den,out_lap(ii).k_gap_den,out_lap(ii).k_med_gap_den,out_lap(ii).k_num_zero_plus_one,out_lap(ii).k_num_zero] = spectral_clustering_for_pcls(c,cr,moa_class,thrsh,k_type,outdir,save_out,save_fig,rng_seed);
+        [spec(ii).tmp_out_nonsingle,spec(ii).tmp_out,spec(ii).tmp_gmt,L,out_lap(ii).k,en,den,out_lap(ii).k_gap_den,out_lap(ii).k_med_gap_den,out_lap(ii).k_num_zero_plus_one,out_lap(ii).k_num_zero] = spectral_clustering_for_pcls(c,cr,moa_class,thrsh,k_type,outdir,save_out,save_fig,rng_seed,show_hclust);
         close all
     catch ME
         disp('Error from spectral clustering')
@@ -346,7 +353,7 @@ if prepare_loocv
 
             % Run spectral clustering
             try
-                [spec(ii).tmp_out_nonsingle,spec(ii).tmp_out,spec(ii).tmp_gmt,L,out_lap(ii).k,en,den,out_lap(ii).k_gap_den,out_lap(ii).k_med_gap_den,out_lap(ii).k_num_zero_plus_one,out_lap(ii).k_num_zero] = spectral_clustering_for_pcls(c,cr,moa_class,thrsh,k_type,loo_outdir,loocv_save_out,loocv_save_fig,rng_seed);
+                [spec(ii).tmp_out_nonsingle,spec(ii).tmp_out,spec(ii).tmp_gmt,L,out_lap(ii).k,en,den,out_lap(ii).k_gap_den,out_lap(ii).k_med_gap_den,out_lap(ii).k_num_zero_plus_one,out_lap(ii).k_num_zero] = spectral_clustering_for_pcls(c,cr,moa_class,thrsh,k_type,loo_outdir,loocv_save_out,loocv_save_fig,rng_seed,show_hclust);
                 close all
             catch ME
                 disp('Error from spectral clustering')
@@ -438,3 +445,6 @@ if prepare_loocv
     
 end
 
+disp(sprintf('Number of computational threads: %d', maxNumCompThreads));
+maxNumCompThreads('automatic'); % reset number of computational threads to default based on hardware resources
+disp(sprintf('Number of computational threads: %d', maxNumCompThreads));

@@ -72,8 +72,12 @@ for ii = 1:numel(gmt)
 		end
 
 		% save gctx files by default
-		mkgctx(fullfile(wkdir,gctdir,[strrep(strrep(strrep(strrep(out(ii).head{1},' ','_'),'|','_'),'/','-'),':','-'),'_corr.gct']),c_corr_tmp); % no loss in decimal precision
-		mkgctx(fullfile(wkdir,gctdir,[strrep(strrep(strrep(strrep(out(ii).head{1},' ','_'),'|','_'),'/','-'),':','-'),'_corr_rank.gct']),c_corr_rank_tmp); % no loss in decimal precision
+		mkgctx(fullfile(wkdir,gctdir,[strrep(strrep(strrep(strrep(out(ii).head{1},' ','_'),'|','_'),'/','-'),':','-'),'_corr.gctx']),c_corr_tmp); % no loss in decimal precision
+		mkgctx(fullfile(wkdir,gctdir,[strrep(strrep(strrep(strrep(out(ii).head{1},' ','_'),'|','_'),'/','-'),':','-'),'_corr_rank.gctx']),c_corr_rank_tmp); % no loss in decimal precision
+        
+		% Create blue-white-red colormap
+		bwr_colormap = [linspace(0, 1, 128)', linspace(0, 1, 128)', ones(128, 1); ...
+		ones(128, 1), linspace(1, 0, 128)', linspace(1, 0, 128)'];
 
 		out(ii).median_corr = median_of_medians(c_corr_tmp.mat,'row',true);
 		out(ii).median_corr_rank = median_of_medians(c_corr_rank_tmp.mat,'row',true);
@@ -81,7 +85,7 @@ for ii = 1:numel(gmt)
 			figure
 				set(gcf,'PaperPosition',[0,0,30,26])
 				imagesc(c_corr_tmp.mat)
-				colormap(jet)
+				colormap(bwr_colormap)
 				caxis([-1,1])
 				colorbar
 				set(gca,'FontSize',14)
@@ -98,8 +102,8 @@ for ii = 1:numel(gmt)
 			figure
 				set(gcf,'PaperPosition',[0,0,30,26])
 				imagesc(c_corr_rank_tmp.mat)
-				colormap(jet)
-				caxis([1,160])
+				colormap(hot)
+				caxis([0,160])
 				colorbar
 				set(gca,'FontSize',14)
 				set(gca,'XTick',1:sum(ridx))
