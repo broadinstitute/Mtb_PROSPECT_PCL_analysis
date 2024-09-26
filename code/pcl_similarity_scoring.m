@@ -1,12 +1,12 @@
-function pcl_similarity_scoring(clusters_path,c_path,c_rank_path,col_meta_path,fgr_path,wkdir,min_clust_size, col_meta_kabx_path, print_multi_target)
+function pcl_similarity_scoring(clusters_path,c_path,c_rank_path,col_meta_path,col_meta_kabx_path,outdir,min_clust_size,print_multi_target)
 
-% PCL_SIMILARITY_SCORING(CLUSTERS_PATH,DS_CORR,DS_CORR_RANK,COL_META,FGR,WKDIR,MIN_CLUST_SIZE)
+% PCL_SIMILARITY_SCORING(CLUSTERS_PATH,DS_CORR,DS_CORR_RANK,COL_META,COL_META_KABX,OUTDIR,MIN_CLUST_SIZE,PRINT_MULTI_TARGET)
 % Set initial variables
 % 
 % datadir = '/idi/cgtb/morzech/idmp/screen4wk_screen5wk_kabx2_tbda1/analysis/pcls';
 % gmtdir = fullfile(datadir, prefix, 'iteration_final');
-% wkdir = fullfile(datadir, prefix, 'iteration_final',['pcls_for_',project_id,'_final4']);
-mk_cd_dir(wkdir, false)
+% outdir = fullfile(datadir, prefix, 'iteration_final',['pcls_for_',project_id,'_final4']);
+mk_cd_dir(outdir, false)
 
 % Load clusters from spectral clustering
 if ischar(clusters_path)
@@ -37,11 +37,6 @@ disp(sprintf('The remaining number of clusters is %d', num_clusters_final))
 %    else
 %		error('Unknown file format for compound annotation! Should be txt, xls, or xlsx')
 %    end
-%end
-
-%% Load table with fractions of GR
-%if isstr(fgr_path)
-%    fgr = rtable(fgr_path);
 %end
 
 %if ismember('double',unique(class(fgr.x_median_total_count)))~=1
@@ -90,29 +85,29 @@ end
 %c = annotate_ds(c,table2struct(col_meta(:,{'cid','x_median_total_count'})),'dim','row','keyfield','cid');
 
 % Load correlation-based rank
-if isstr(c_rank_path)
-	c_rank = parse_gctx(c_rank_path);
-end
+%if isstr(c_rank_path)
+%	c_rank = parse_gctx(c_rank_path);
+%end
 %c_rank = annotate_ds(c_rank,table2struct(col_meta(:,{'cid','x_median_total_count'})),'dim','column','keyfield','cid');
 %c_rank = annotate_ds(c_rank,table2struct(col_meta(:,{'cid','x_median_total_count'})),'dim','row','keyfield','cid');
 
 % Make sure that c and c_rank are sorted in the same way
-c_rank = ds_slice(c_rank,'cid',c.cid,'rid',c.rid);
+%c_rank = ds_slice(c_rank,'cid',c.cid,'rid',c.rid);
 
 assert(all(diag(c.mat) == 1))
 
-assert(all(diag(c_rank.mat) == 1))
+%assert(all(diag(c_rank.mat) == 1))
 
 % Set the diagonal of the matrix to all NaN values
 % - this will exclude self-similarity when calculating the median correlation of a treatment
 % to a PCL that it is a member of
 c.mat(eye(size(c.mat))==1) = NaN;
 
-c_rank.mat(eye(size(c_rank.mat))==1) = NaN;
+%c_rank.mat(eye(size(c_rank.mat))==1) = NaN;
 
 assert(all(isnan(diag(c.mat))))
 
-assert(all(isnan(diag(c_rank.mat))))
+%assert(all(isnan(diag(c_rank.mat))))
 
 % Add pert_id
 % Already includes pert_id
@@ -123,23 +118,23 @@ assert(all(isnan(diag(c_rank.mat))))
 %% Check if all reference compounds are in the correlation matrix
 setdiff(cat(1,clusters.entry),c.cid)
 
-% Slice c and c_rank to contain all profiles in rows and profiles from clusters in columns
+% Slice c to contain all profiles in rows and profiles from clusters in columns
 ridx = ismember(c.rid, rids);
 sum(ridx)
 cidx = ismember(c.cid, cat(1,clusters.entry));
 sum(cidx)
 
 c = ds_slice(c,'ridx',ridx,'cidx',cidx);
-c_rank = ds_slice(c_rank,'ridx',ridx,'cidx',cidx);
+%c_rank = ds_slice(c_rank,'ridx',ridx,'cidx',cidx);
 
 % Save gctx files
 disp('Saving gctx files')
-mkgctx(fullfile(wkdir,'ds_corr.gctx'), c)
-mkgctx(fullfile(wkdir,'ds_corr_rank.gctx'), c_rank)
+mkgctx(fullfile(outdir,'ds_corr.gctx'), c)
+%mkgctx(fullfile(outdir,'ds_corr_rank.gctx'), c_rank)
 
 % ## Run MoA discovery using MoA-based clusters with overlap
-assert(isequal(c.cid, c_rank.cid),'Columns are not sorted identically')
-assert(isequal(c.rid, c_rank.rid),'Rows are not sorted identically')
+%assert(isequal(c.cid, c_rank.cid),'Columns are not sorted identically')
+%assert(isequal(c.rid, c_rank.rid),'Rows are not sorted identically')
 
 % pre-sort indices by broad_id
 disp('Sorting indices by broad_id')
@@ -170,35 +165,35 @@ for jj = 1:numel(clusters)
 
     tmp_tbl = {};
     
-    tmp_tbl.rid = c.rid;
+    tmp_tbl.cid = c.rid;
     tmp_tbl.proj_broad_id = c.rdesc(:, c.rdict('proj_broad_id'));
     tmp_tbl.broad_id = c.rdesc(:, c.rdict('broad_id'));
     tmp_tbl.pert_id = c.rdesc(:, c.rdict('pert_id'));
-    tmp_tbl.pert_idose = c.rdesc(:, c.rdict('pert_idose_tickl'));
+    tmp_tbl.pert_idose = c.rdesc(:, c.rdict('pert_idose'));
     tmp_tbl.pert_dose = c.rdesc(:, c.rdict('pert_dose'));
     %tmp_tbl.x_median_total_count = c.rdesc(:, c.rdict('x_median_total_count'));
 
-    num_rids = numel(c.rid);
+    num_cids = numel(c.rid);
 
     %clusters(jj).head
 
-    tmp_tbl.cluster_id = repmat({clusters(jj).head}, num_rids, 1);
+    tmp_tbl.cluster_id = repmat({clusters(jj).head}, num_cids, 1);
 
-    tmp_tbl.cluster_desc = repmat({clusters(jj).desc}, num_rids, 1);
+    tmp_tbl.cluster_desc = repmat({clusters(jj).desc}, num_cids, 1);
 
-    tmp_tbl.cluster_size = repmat(clusters(jj).len, num_rids, 1);
+    tmp_tbl.cluster_size = repmat(clusters(jj).len, num_cids, 1);
 
     cidx = ismember(c.cid,clusters(jj).entry);
 
-    tmp_tbl.cluster_size_actual = repmat(sum(cidx), num_rids, 1);
+    tmp_tbl.cluster_size_actual = repmat(sum(cidx), num_cids, 1);
 
-    tmp_tbl.cluster_proj_broad_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('proj_broad_id'))))}, num_rids, 1);
-    tmp_tbl.cluster_broad_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('broad_id'))))}, num_rids, 1);
-    tmp_tbl.cluster_pert_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('pert_id'))))}, num_rids, 1);
-    tmp_tbl.num_pert_id_unique = repmat(numel(unique(c.cdesc(cidx, c.cdict('pert_id')))), num_rids, 1);
+    tmp_tbl.cluster_proj_broad_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('proj_broad_id'))))}, num_cids, 1);
+    tmp_tbl.cluster_broad_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('broad_id'))))}, num_cids, 1);
+    tmp_tbl.cluster_pert_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('pert_id'))))}, num_cids, 1);
+    tmp_tbl.num_pert_id_unique = repmat(numel(unique(c.cdesc(cidx, c.cdict('pert_id')))), num_cids, 1);
     
     tmp_tbl.median_corr = median(c.mat(:, cidx), 2, 'omitnan');
-    tmp_tbl.median_corr_rank = median(c_rank.mat(:,cidx), 2, 'omitnan');
+    %tmp_tbl.median_corr_rank = median(c_rank.mat(:,cidx), 2, 'omitnan');
 
     tmp_tbl = struct2table(tmp_tbl);
 
@@ -215,31 +210,33 @@ disp('All clusters successfully looped through')
 headt(out_tbl)
 
 % Make gctx
-out_tbl.rid_idx = grp2idx(out_tbl.rid);
+out_tbl.cid_idx = grp2idx(out_tbl.cid);
 out_tbl.cluster_id_idx = grp2idx(out_tbl.cluster_id);
 
 % Find indices
 [~,ridx] = unique(out_tbl.cluster_id_idx);
 rid = out_tbl.cluster_id(ridx);
-[~,cidx] = unique(out_tbl.rid_idx);
-cid = out_tbl.rid(cidx);
+[~,cidx] = unique(out_tbl.cid_idx);
+cid = out_tbl.cid(cidx);
 
 % Create metadata
 
-%col_meta = out_tbl(cidx,{'rid','proj_broad_id','broad_id','pert_id','pert_idose_tickl','pert_dose'});
+%col_meta = out_tbl(cidx,{'cid','proj_broad_id','broad_id','pert_id','pert_idose','pert_dose'});
+col_meta = col_meta;
 
-row_meta = out_tbl(ridx,{'cluster_id','cluster_desc','cluster_size','cluster_proj_broad_id','cluster_broad_id','cluster_pert_id','num_pert_id_unique'});
+row_meta = out_tbl(ridx,{'cluster_id','cluster_desc','cluster_size','cluster_proj_broad_id','cluster_broad_id','cluster_pert_id','cluster_num_pert_id_unique'});
 
 % Create an empty matrix
 mat = nan(numel(rid),numel(cid));
-ind = sub2ind(size(mat),out_tbl.cluster_id_idx,out_tbl.rid_idx);
+ind = sub2ind(size(mat),out_tbl.cluster_id_idx,out_tbl.cid_idx);
 
 ds = mkgctstruct(mat,'rid',rid','cid',cid);
-ds = annotate_ds(ds,table2struct(col_meta),'dim','column','keyfield','rid');
+ds = annotate_ds(ds,table2struct(col_meta),'dim','column','keyfield','cid');
 ds = annotate_ds(ds,table2struct(row_meta),'dim','row','keyfield','cluster_id');
 
 % Create gctx files with various data
-fields = {'median_corr','median_corr_rank'};
+%fields = {'median_corr','median_corr_rank'};
+fields = {'median_corr'};
 
 for ii = 1:numel(fields)
     disp(fields{ii})
@@ -250,17 +247,17 @@ for ii = 1:numel(fields)
     rid1 = ds_tmp.rid(2);
     cid1 = ds_tmp.cid(1);
     corr1 = ds_tmp.mat(2,1);
-    idx = ismember(out_tbl.rid,cid1)&ismember(out_tbl.cluster_id,rid1);
+    idx = ismember(out_tbl.cid,cid1)&ismember(out_tbl.cluster_id,rid1);
     assert(sum(idx)>0,'Rows or columns of the gct structure do not match');
     assert(out_tbl.(fields{ii})(idx)==corr1,'Value in the matrix do not match the one in the table');
-    mkgctx(fullfile(wkdir,['cluster_',fields{ii},'.gctx']), ds_tmp)
+    mkgctx(fullfile(outdir,['cluster_',fields{ii},'.gctx']), ds_tmp)
 end
 
 % Section to check clusters for their most similar KABX dsCGI profile and define them as PCLs if the profiles are in-MOA (share same MOA as PCL)
 % and exclude them as uninterpretable clusters for MOA prediction otherwise
 
 % Parse gctx with the cluster similarity score
-g = glob(fullfile(wkdir,'cluster_median_corr_n*.gctx'))
+g = glob(fullfile(outdir,'cluster_median_corr_n*.gctx'))
 ss_all = parse_gctx(g{1}); % cluster similarity score of all treatments
 
 col_meta_ss_all = cell2table([ss_all.cid,ss_all.cdesc],'VariableNames',['cid';ss_all.chd]);
@@ -277,7 +274,7 @@ unique(row_meta_ss_all.cluster_desc)
 
 ss_all_tbl = [col_meta_ss_all(b,:),row_meta_ss_all(a,:)];
 size(ss_all_tbl)
-ss_all_tbl.similarity_score = ss_all.mat(:);
+ss_all_tbl.cluster_similarity_score = ss_all.mat(:);
 
 ss_all_same_moa = ss_all;
 ss_all_same_moa.mat = zeros(size(ss_all.mat));
@@ -347,9 +344,9 @@ length(moa_cluster_list)
 
 % filter out MOA in-separable PCLs prior to iterating
 
-% Find the row with the maximum similarity_score for each rid
+% Find the row with the maximum cluster_similarity_score for each rid
 
-maxSimilarityScore = groupsummary(ss_kabx_tbl, 'rid', @max, 'similarity_score');
+maxSimilarityScore = groupsummary(ss_kabx_tbl, 'rid', @max, 'cluster_similarity_score');
 
 size(maxSimilarityScore)
 
@@ -363,8 +360,8 @@ size(ss_kabx_tbl)
 
 headt(ss_kabx_tbl)
 
-% Get the rows with the maximum similarity_score
-maxRows = ss_kabx_tbl(ss_kabx_tbl.similarity_score >= ss_kabx_tbl.fun1_similarity_score,:);
+% Get the rows with the maximum cluster_similarity_score
+maxRows = ss_kabx_tbl(ss_kabx_tbl.cluster_similarity_score >= ss_kabx_tbl.fun1_cluster_similarity_score,:);
 
 size(maxRows)
 
@@ -396,15 +393,77 @@ pcls_tbl = struct2table(pcls);
 headt(pcls_tbl)
 size(pcls_tbl)
 
-mkgmt(fullfile(wkdir, 'pcls.gmt'), pcls)
+mkgmt(fullfile(outdir, 'pcls.gmt'), pcls)
 
+size(ss_all_tbl)
 
+ss_all_tbl = ss_all_tbl(ismember(ss_all_tbl.rid, pcl_list),:);
 
+size(ss_all_tbl)
+
+% Get the current column names of the table
+col_names = ss_all_tbl.Properties.VariableNames;
+
+% Replace "cluster" with "pcl" in each column name
+new_col_names = strrep(col_names, 'cluster', 'pcl');
+
+% Assign the updated column names back to the table
+ss_all_tbl.Properties.VariableNames = new_col_names;
+
+headt(ss_all_tbl)
+
+% Make gctx
+ss_all_tbl.cid_idx = grp2idx(ss_all_tbl.cid);
+ss_all_tbl.pcl_id_idx = grp2idx(ss_all_tbl.pcl_id);
+
+% Find indices
+[~,ridx] = unique(ss_all_tbl.pcl_id_idx);
+rid = ss_all_tbl.pcl_id(ridx);
+[~,cidx] = unique(ss_all_tbl.cid_idx);
+cid = ss_all_tbl.cid(cidx);
+
+% Create metadata
+
+col_names = ss_all_tbl.Properties.VariableNames;
+
+% Find all column names that do not contain "pcl"
+non_pcl_col_names = col_names(~contains(col_names, 'pcl'))
+pcl_col_names = col_names(contains(col_names, 'pcl') & ~contains(col_names, {'pcl_similarity_score', 'pcl_and_moa_agree'}));
+
+col_meta = ss_all_tbl(cidx, non_pcl_col_names);
+
+row_meta = ss_all_tbl(ridx, pcl_col_names);
+
+% Create an empty matrix
+mat = nan(numel(rid),numel(cid));
+ind = sub2ind(size(mat),ss_all_tbl.pcl_id_idx,ss_all_tbl.cid_idx);
+
+ds = mkgctstruct(mat,'rid',rid','cid',cid);
+ds = annotate_ds(ds,table2struct(col_meta),'dim','column','keyfield','cid');
+ds = annotate_ds(ds,table2struct(row_meta),'dim','row','keyfield','pcl_id');
+
+% Create gctx files with various data
+fields = {'pcl_similarity_score','pcl_and_moa_agree'};
+
+for ii = 1:numel(fields)
+    disp(fields{ii})
+    ds_tmp = ds;
+    ds_tmp.mat(ind) = ss_all_tbl.(fields{ii});
+
+    % Verify
+    rid1 = ds_tmp.rid(2);
+    cid1 = ds_tmp.cid(1);
+    corr1 = ds_tmp.mat(2,1);
+    idx = ismember(ss_all_tbl.cid,cid1)&ismember(ss_all_tbl.pcl_id,rid1);
+    assert(sum(idx)>0,'Rows or columns of the gct structure do not match');
+    assert(ss_all_tbl.(fields{ii})(idx)==corr1,'Value in the matrix do not match the one in the table');
+    mkgctx(fullfile(outdir,[fields{ii},'.gctx']), ds_tmp)
+end
 
 % Save the output table
 %if ~isempty(project_id)
-%    wtable(out_tbl,fullfile(wkdir,[project_id, '_correlation_to_selected_pcls.txt']));
+%    wtable(ss_all_tbl,fullfile(outdir,[project_id, '_correlation_to_selected_pcls.txt']));
 %else
-%    wtable(out_tbl,fullfile(wkdir,'correlation_to_selected_pcls.txt'));
+%    wtable(ss_all_tbl,fullfile(outdir,'correlation_to_selected_pcls.txt'));
 %end
 
