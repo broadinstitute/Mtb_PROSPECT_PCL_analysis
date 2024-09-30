@@ -39,6 +39,8 @@ min_clust_size = 2
 
 print_multi_target = false
 
+stringify_cids = false
+
 % previous Spectral Clustering inputs
 
 thrsh_rank = 20 % threshold for average pairwise rank of correlation across KABX to connect treatments as mutual nearest-neighbors
@@ -73,7 +75,7 @@ assert(exist(col_meta_path) > 0)
 
 assert(exist(col_meta_kabx_path) > 0 )
 
-pcl_similarity_scoring(clusters_path,c_path,c_rank_path,col_meta_path,col_meta_kabx_path,outdir,min_clust_size,print_multi_target)
+pcl_similarity_scoring(clusters_path,c_path,c_rank_path,col_meta_path,col_meta_kabx_path,outdir,min_clust_size,print_multi_target,stringify_cids)
 
 % # LOOCV section
 
@@ -141,7 +143,7 @@ if prepare_loocv
 
         assert(exist(col_meta_kabx_path) > 0 )
         
-        pcl_similarity_scoring(clusters_path,c_path,c_rank_path,col_meta_path,col_meta_kabx_path,outdir,min_clust_size,print_multi_target)
+        pcl_similarity_scoring(clusters_path,c_path,c_rank_path,col_meta_path,col_meta_kabx_path,outdir,min_clust_size,print_multi_target,stringify_cids)
         
     end
     

@@ -1,6 +1,6 @@
-function pcl_similarity_scoring(clusters_path,c_path,c_rank_path,col_meta_path,col_meta_kabx_path,outdir,min_clust_size,print_multi_target)
+function pcl_similarity_scoring(clusters_path,c_path,c_rank_path,col_meta_path,col_meta_kabx_path,outdir,min_clust_size,print_multi_target,stringify_cids)
 
-% PCL_SIMILARITY_SCORING(CLUSTERS_PATH,DS_CORR,DS_CORR_RANK,COL_META,COL_META_KABX,OUTDIR,MIN_CLUST_SIZE,PRINT_MULTI_TARGET)
+% PCL_SIMILARITY_SCORING(CLUSTERS_PATH,DS_CORR,DS_CORR_RANK,COL_META,COL_META_KABX,OUTDIR,MIN_CLUST_SIZE,PRINT_MULTI_TARGET,STRINGIFY_CIDS)
 % Set initial variables
 % 
 % datadir = '/idi/cgtb/morzech/idmp/screen4wk_screen5wk_kabx2_tbda1/analysis/pcls';
@@ -16,6 +16,11 @@ end
 % Set minimum cluster size if not provided in the input
 if isempty(min_clust_size)
 	min_clust_size = 2; 
+end
+
+% Set stringify_cids if not provided in the input
+if isempty(stringify_cids)
+	stringify_cids = false; 
 end
 
 % Remove groups with fewer than min_clust_size profiles
@@ -191,7 +196,9 @@ for jj = 1:numel(clusters)
 
     tmp_tbl.cluster_size_actual = repmat(sum(cidx), num_cids, 1);
 
-    tmp_tbl.cluster_cids = repmat({stringify(unique(c.cid(cidx)))}, num_cids, 1);
+    if stringify_cids
+        tmp_tbl.cluster_cids = repmat({stringify(unique(c.cid(cidx)))}, num_cids, 1);
+    end
     tmp_tbl.cluster_proj_broad_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('proj_broad_id'))))}, num_cids, 1);
     tmp_tbl.cluster_broad_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('broad_id'))))}, num_cids, 1);
     tmp_tbl.cluster_pert_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('pert_id'))))}, num_cids, 1);
@@ -230,7 +237,11 @@ cid = out_tbl.cid(cidx);
 %col_meta = out_tbl(cidx,{'cid','proj_broad_id','broad_id','pert_id','pert_idose','pert_dose'});
 col_meta = col_meta;
 
-row_meta = out_tbl(ridx,{'cluster_id','cluster_desc','cluster_size','cluster_cids','cluster_proj_broad_id','cluster_broad_id','cluster_pert_id','cluster_num_pert_ids_unique'});
+if stringify_cids
+    row_meta = out_tbl(ridx,{'cluster_id','cluster_desc','cluster_size','cluster_cids','cluster_proj_broad_id','cluster_broad_id','cluster_pert_id','cluster_num_pert_ids_unique'});
+else
+    row_meta = out_tbl(ridx,{'cluster_id','cluster_desc','cluster_size','cluster_proj_broad_id','cluster_broad_id','cluster_pert_id','cluster_num_pert_ids_unique'});
+end
 
 % Create an empty matrix
 mat = nan(numel(rid),numel(cid));
@@ -272,14 +283,14 @@ col_meta_ss_all.target_description = any2str(col_meta_ss_all.target_description)
 disp('Head of col_meta_ss_all tbl:');
 disp(headt(col_meta_ss_all));
 disp('Unique KABX MOA annotations including multi-target:');
-disp(unique(col_meta_ss_all.target_description));
+unique(col_meta_ss_all.target_description)
 
 row_meta_ss_all = cell2table([ss_all.rid,ss_all.rdesc],'VariableNames',['rid';ss_all.rhd]);
 row_meta_ss_all.cluster_desc = any2str(row_meta_ss_all.cluster_desc);
 disp('Head of row_meta_ss_all tbl:');
 disp(headt(row_meta_ss_all));
-disp('Unique PCL MOA annotations:');
-disp(unique(row_meta_ss_all.cluster_desc));
+disp('Unique cluster MOA annotations:');
+unique(row_meta_ss_all.cluster_desc)
 
 [a,b] = ind2sub(size(ss_all.mat),1:numel(ss_all.mat));
 
