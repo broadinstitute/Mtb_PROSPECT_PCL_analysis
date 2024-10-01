@@ -29,7 +29,7 @@ end
 
 % Set unknown_target_description_values if not provided in the input
 if isempty(unknown_target_description_values)
-	unknown_target_description_values {'','NA','NAN','NaN','whole cell only','unknown'}; % in case of different processing filetypes and NA values stored in import/export
+	unknown_target_description_values = {'','NA','NAN','NaN','whole cell only','unknown'}; % in case of different processing filetypes and NA values stored in import/export
 end
 
 % Set make_fig if not provided in the input
