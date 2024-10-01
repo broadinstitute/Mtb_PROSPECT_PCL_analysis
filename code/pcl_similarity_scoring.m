@@ -467,8 +467,8 @@ ss_all_tbl.Properties.VariableNames = new_col_names;
 ss_all_tbl.pcl_id = ss_all_tbl.rid;
 
 disp('Size and head of ss_all tbl:');
-disp(headt(ss_all_tbl));
 disp(size(ss_all_tbl));
+disp(headt(ss_all_tbl));
 
 % Make gctx
 ss_all_tbl.cid_idx = grp2idx(ss_all_tbl.cid);

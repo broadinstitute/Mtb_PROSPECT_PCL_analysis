@@ -22,6 +22,9 @@ results_subdir_prefix = 'loocv_pcls/leave_out_cmpd_'
 
 loocv_save_out = false % save tabular file for each treatment's PCL similarity score
 
+loocv_corr_filename = 'sGR_for_pcls_pearson_corr' % for faster runtime and lower storage, only will consider KABX dsCGI profiles in LOOCV
+
+loocv_col_meta_all_filename = 'col_meta_kabx.txt' % for faster runtime and lower storage, only will consider KABX dsCGI profiles in LOOCV
 
 % general inputs
 
@@ -31,7 +34,7 @@ corr_filename = 'sGR_kabx_gsk_brd4310_pearson_corr'
 
 col_meta_all_filename = 'col_meta.txt'
 
-col_meta_kabx_filename = 'col_meta_kabx.txt'
+col_meta_kabx_filename = 'col_meta_kabx_for_pcls.txt'
 
 save_out = false % save tabular file for each treatment's PCL similarity score
 
@@ -128,11 +131,11 @@ if prepare_loocv
         % step specific commands
     
         clusters_path = fullfile(loo_wkdir, prev_outdir_name, clusters_gmt_filename)
-        g = glob(fullfile(loo_wkdir, [corr_filename,'_n*.gctx']));
+        g = glob(fullfile(wkdir, [loocv_corr_filename,'_n*.gctx'])); % calculating PCL similarity scores for all KABX dsCGI profiles and excluding test compounds
         c_path = g{1}
         c_rank_path = []
-        col_meta_path = fullfile(loo_wkdir, col_meta_all_filename)
-        col_meta_kabx_path = fullfile(loo_wkdir, col_meta_kabx_filename)
+        col_meta_path = fullfile(wkdir, loocv_col_meta_all_filename) % col_meta is for all of KABX only excluding test compounds
+        col_meta_kabx_path = fullfile(loo_wkdir, col_meta_kabx_filename) % col_meta_kabx (in this iteration of LOOCV with a KABX compound treated as unknown) is the col_meta_kabx_for_pcls file in its subdirectory
         outdir = loo_outdir
         
         assert(exist(clusters_path) > 0)
