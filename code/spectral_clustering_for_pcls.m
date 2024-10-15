@@ -245,24 +245,26 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 		colorbar
 		title(sprintf('Average rank in Pearson\ncorrelation across KABX\n(re-sorted by cluster)'))
 
+	moa_class_str = strrep(strrep(moa_class,' ','_'),'/','-');
+	if save_fig
+	    saveas_png(gcf,outdir,[moa_class_str,'_spectral_clust.png'])
+	end
 
     out.group_id = strcat(moa_class,':group',any2str(out.cluster_id));
 	idx = out.cluster_size>1; % only keep clusters with more than one treatment
 	if sum(idx)>0
 		out_nonsingle = out(idx,:);
 		%out_nonsingle.group_id = strcat(moa_class,':group',any2str(out_nonsingle.cluster_id));
-
-		% Create gmt file
-		gmt = tbl2gmt(table2struct(out_nonsingle),'group_field','group_id','desc_field','moa_class','member_field','cid');
 	else
-		out_nonsingle = {};
-		gmt = {};
+		%out_nonsingle = {};
+		out_nonsingle = table('Size', [0, width(out)], ...
+                      'VariableTypes', varfun(@class, out, 'OutputFormat', 'cell'), ...
+                      'VariableNames', out.Properties.VariableNames);
+		%gmt = {};
 	end
 	
-	moa_class_str = strrep(strrep(moa_class,' ','_'),'/','-');
-	if save_fig
-	    saveas_png(gcf,outdir,[moa_class_str,'_spectral_clust.png'])
-	end
+	% Create gmt file
+	gmt = tbl2gmt(table2struct(out_nonsingle),'group_field','group_id','desc_field','moa_class','member_field','cid');
 
 	if save_out
 	    wtable(out,fullfile(outdir,[moa_class_str,'_spectral_clust.txt']))

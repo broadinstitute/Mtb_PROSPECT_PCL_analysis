@@ -10,7 +10,7 @@ mk_cd_dir(wkdir, true);
 
 prepare_loocv = true
 
-demo_loocv = true
+demo_loocv = false
 
 demo_loocv_number_or_list = 'number' % 'number' or 'list'
 
@@ -76,11 +76,11 @@ if load_and_save_GR
     gr = parse_gctx(fullfile(datadir,'GR_filename'));
 end
 
-grzs = parse_gctx(fullfile(datadir,sGR_filename));
+sgr = parse_gctx(fullfile(datadir,sGR_filename));
 
 % ## Generate col_meta
 
-[~,col_meta] = gct2meta(grzs);
+[~,col_meta] = gct2meta(sgr);
 
 headt(col_meta)
 
@@ -97,6 +97,9 @@ headt(col_meta)
 size(col_meta)
 [col_meta, ileft, ] = outerjoin(col_meta,pcl_annot,'Keys','pert_id','RightVariables','pcl_desc','Type','left','MergeKeys',true);
 
+col_meta.target_description = col_meta.pcl_desc;
+col_meta.proj_broad_id = strcat(col_meta.project_id, ':', col_meta.broad_id);
+
 % re-sort col_meta data by original indices, caution: join operations in Matlab re-sort tables by their key values
 [sorted_ileft, ileft_index] = sort(ileft);
 col_meta = col_meta(ileft_index,:);
@@ -109,6 +112,10 @@ headt(col_meta)
 wtable(col_meta,fullfile(wkdir, col_meta_savepath))
 
 %col_meta = sortrows(col_meta,{'pcl_desc','pert_id','pert_dose'});
+
+% Annotate sGR GCT with col_meta target_description (MOA) if absent or getting updated according to KABX annotation file
+
+sgr = annotate_ds(sgr, table2struct(col_meta(:,{'cid','proj_broad_id','target_description'})),'dim','column','keyfield','cid');
 
 % ## Keep only entries that are annotated with MOA (KABX dsCGI profiles)
 
@@ -137,35 +144,35 @@ col_meta_for_pcls.pcl_desc = any2str(col_meta_for_pcls.pcl_desc);
 
 % ## Calculate Pearson correlation between all KABX and experimental compound dsCGI profiles using sGR
 
-grzs_corr = ds_corr(grzs, 'type', 'pearson');
+sgr_corr = ds_corr(sgr, 'type', 'pearson');
 
-mkgctx(fullfile(wkdir, corr_savepath),grzs_corr)
+mkgctx(fullfile(wkdir, corr_savepath),sgr_corr)
 
 if save_gct
-    mkgct(fullfile(wkdir, corr_savepath),grzs_corr,'precision',4)
+    mkgct(fullfile(wkdir, corr_savepath),sgr_corr,'precision',4)
 end
 
 % ## Subset gcts to KABX dsCGI profiles only as input for PCL clustering 
 
-length(grzs.cid)
+length(sgr.cid)
 
 %gr.cid(1:10)
-grzs.cid(1:10)
+sgr.cid(1:10)
 
 if load_and_save_GR
     gr_for_pcls = ds_slice(gr,'cid',unique(col_meta_for_pcls.cid,'stable'));
 end
 
-grzs_for_pcls = ds_slice(grzs,'cid',unique(col_meta_for_pcls.cid,'stable'));
+sgr_for_pcls = ds_slice(sgr,'cid',unique(col_meta_for_pcls.cid,'stable'));
 
 if load_and_save_GR
     mkgctx(fullfile(wkdir, GR_for_pcls_savepath),gr)
 end
-mkgctx(fullfile(wkdir, sGR_for_pcls_savepath),grzs_for_pcls)
+mkgctx(fullfile(wkdir, sGR_for_pcls_savepath),sgr_for_pcls)
 
-length(grzs_for_pcls.cid)
+length(sgr_for_pcls.cid)
 
-grzs_for_pcls.cid(1:10)
+sgr_for_pcls.cid(1:10)
 
 % ## Create gmt file with dsCGI profile - MOA membership
 
@@ -181,22 +188,22 @@ mkgmt(fullfile(wkdir, moa_gmt_savepath), moas)
 
 % ## Calculate Pearson correlation and average rank of correlation (mutual nearest-neighbors) between all KABX dsCGI profiles using sGR 
 
-grzs_corr_for_pcls = ds_corr(grzs_for_pcls, 'type', 'pearson');
+sgr_corr_for_pcls = ds_corr(sgr_for_pcls, 'type', 'pearson');
 
-grzs_corr_rank_for_pcls = grzs_corr_for_pcls;
+sgr_corr_rank_for_pcls = sgr_corr_for_pcls;
 
 % for each KABX treatment, rank all KABX treatments from highest similarity/Pearson correlation to lowest similarity/Pearson correlation
-mat = rankorder(grzs_corr_for_pcls.mat,'dim','row','direc','descend');
+mat = rankorder(sgr_corr_for_pcls.mat,'dim','row','direc','descend');
 
 % in order to symmetrize matrix, calculate as the average rank between each of KABX treatments
-grzs_corr_rank_for_pcls.mat = (mat+mat')/2;
+sgr_corr_rank_for_pcls.mat = (mat+mat')/2;
 
-mkgctx(fullfile(wkdir, corr_for_pcls_savepath),grzs_corr_for_pcls)
-mkgctx(fullfile(wkdir, corr_rank_for_pcls_savepath),grzs_corr_rank_for_pcls)
+mkgctx(fullfile(wkdir, corr_for_pcls_savepath),sgr_corr_for_pcls)
+mkgctx(fullfile(wkdir, corr_rank_for_pcls_savepath),sgr_corr_rank_for_pcls)
 
 if save_gct
-    mkgct(fullfile(wkdir, corr_for_pcls_savepath),grzs_corr_for_pcls,'precision',4)
-    mkgct(fullfile(wkdir, corr_rank_for_pcls_savepath),grzs_corr_rank_for_pcls,'precision',4)
+    mkgct(fullfile(wkdir, corr_for_pcls_savepath),sgr_corr_for_pcls,'precision',4)
+    mkgct(fullfile(wkdir, corr_rank_for_pcls_savepath),sgr_corr_rank_for_pcls,'precision',4)
 end
 
 % ## Save list of KABX compounds (pert_ids) for referencing during LOOCV
@@ -223,6 +230,8 @@ if prepare_loocv
     
     number_of_cmpds_loocv = length(unique_kabx_cmpds_list)
     
+    index_cmpds_loocv = 1:number_of_cmpds_loocv;
+    
     if demo_loocv
        if strcmp(demo_loocv_number_or_list, 'number')
            number_of_cmpds_loocv = max(1, demo_loocv_number_cmpds)
@@ -237,6 +246,8 @@ if prepare_loocv
            error('Invalid input for demo_loocv_number_or_list: number or list')
        end
     end
+    
+    disp(sprintf('Number of KABX compounds to be processed in LOOCV: %d', length(index_cmpds_loocv)))
 
     for i = index_cmpds_loocv
 
@@ -275,26 +286,26 @@ if prepare_loocv
 
         assert(length(loo_cmpd_cids) > 0)
 
-        grzs_corr_remaining_kabx = ds_slice(grzs_corr_for_pcls, 'cid',remaining_kabx_cids, 'rid', remaining_kabx_cids);
+        sgr_corr_remaining_kabx = ds_slice(sgr_corr_for_pcls, 'cid',remaining_kabx_cids, 'rid', remaining_kabx_cids);
 
-        grzs_corr_loo_cmpd = ds_slice(grzs_corr_for_pcls, 'cid',loo_cmpd_cids, 'rid', loo_cmpd_cids);
+        sgr_corr_loo_cmpd = ds_slice(sgr_corr_for_pcls, 'cid',loo_cmpd_cids, 'rid', loo_cmpd_cids);
 
-        grzs_corr_loo_cmpd_to_remaining_kabx = ds_slice(grzs_corr_for_pcls, 'rid',remaining_kabx_cids, 'cid', loo_cmpd_cids);
+        sgr_corr_loo_cmpd_to_remaining_kabx = ds_slice(sgr_corr_for_pcls, 'rid',remaining_kabx_cids, 'cid', loo_cmpd_cids);
 
-        assert(size(grzs_corr_loo_cmpd_to_remaining_kabx.mat, 1) < size(grzs_corr_for_pcls.mat, 1))
+        assert(size(sgr_corr_loo_cmpd_to_remaining_kabx.mat, 1) < size(sgr_corr_for_pcls.mat, 1))
 
-        assert(size(grzs_corr_loo_cmpd.mat, 1) > 0)
+        assert(size(sgr_corr_loo_cmpd.mat, 1) > 0)
 
 
-        grzs_corr_rank_remaining_kabx = grzs_corr_remaining_kabx;
-        mat = rankorder(grzs_corr_remaining_kabx.mat,'dim','row','direc','descend');
-        grzs_corr_rank_remaining_kabx.mat = (mat+mat')/2;
+        sgr_corr_rank_remaining_kabx = sgr_corr_remaining_kabx;
+        mat = rankorder(sgr_corr_remaining_kabx.mat,'dim','row','direc','descend');
+        sgr_corr_rank_remaining_kabx.mat = (mat+mat')/2;
 
-        mkgctx(fullfile(loo_wkdir, corr_for_pcls_savepath),grzs_corr_remaining_kabx);
-        mkgctx(fullfile(loo_wkdir, corr_rank_for_pcls_savepath),grzs_corr_rank_remaining_kabx);
+        mkgctx(fullfile(loo_wkdir, corr_for_pcls_savepath),sgr_corr_remaining_kabx);
+        mkgctx(fullfile(loo_wkdir, corr_rank_for_pcls_savepath),sgr_corr_rank_remaining_kabx);
 
-        mkgctx(fullfile(loo_wkdir, corr_for_loo_cmpd_savepath),grzs_corr_loo_cmpd);
-        mkgctx(fullfile(loo_wkdir, corr_for_loo_cmpd_to_remaining_kabx_savepath),grzs_corr_loo_cmpd_to_remaining_kabx);
+        mkgctx(fullfile(loo_wkdir, corr_for_loo_cmpd_savepath),sgr_corr_loo_cmpd);
+        mkgctx(fullfile(loo_wkdir, corr_for_loo_cmpd_to_remaining_kabx_savepath),sgr_corr_loo_cmpd_to_remaining_kabx);
 
         moas_remaining_kabx = tbl2gmt(table2struct(sortrows(col_meta_for_pcls_remaining_kabx, {'pcl_desc'})),'group_field','pcl_desc','desc_field','pcl_desc','member_field','cid');
 

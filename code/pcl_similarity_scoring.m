@@ -199,9 +199,9 @@ for jj = 1:numel(clusters)
     if stringify_cids
         tmp_tbl.cluster_cids = repmat({stringify(unique(c.cid(cidx)))}, num_cids, 1);
     end
-    tmp_tbl.cluster_proj_broad_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('proj_broad_id'))))}, num_cids, 1);
-    tmp_tbl.cluster_broad_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('broad_id'))))}, num_cids, 1);
-    tmp_tbl.cluster_pert_id = repmat({stringify(unique(c.cdesc(cidx,c.cdict('pert_id'))))}, num_cids, 1);
+    tmp_tbl.cluster_proj_broad_ids = repmat({stringify(unique(c.cdesc(cidx,c.cdict('proj_broad_id'))))}, num_cids, 1);
+    tmp_tbl.cluster_broad_ids = repmat({stringify(unique(c.cdesc(cidx,c.cdict('broad_id'))))}, num_cids, 1);
+    tmp_tbl.cluster_pert_ids = repmat({stringify(unique(c.cdesc(cidx,c.cdict('pert_id'))))}, num_cids, 1);
     
     tmp_tbl.cluster_num_pert_ids_unique = repmat(numel(unique(c.cdesc(cidx, c.cdict('pert_id')))), num_cids, 1);
     
@@ -238,9 +238,9 @@ cid = out_tbl.cid(cidx);
 col_meta = col_meta;
 
 if stringify_cids
-    row_meta = out_tbl(ridx,{'cluster_id','cluster_desc','cluster_size','cluster_cids','cluster_proj_broad_id','cluster_broad_id','cluster_pert_id','cluster_num_pert_ids_unique'});
+    row_meta = out_tbl(ridx,{'cluster_id','cluster_desc','cluster_size','cluster_cids','cluster_proj_broad_ids','cluster_broad_ids','cluster_pert_ids','cluster_num_pert_ids_unique'});
 else
-    row_meta = out_tbl(ridx,{'cluster_id','cluster_desc','cluster_size','cluster_proj_broad_id','cluster_broad_id','cluster_pert_id','cluster_num_pert_ids_unique'});
+    row_meta = out_tbl(ridx,{'cluster_id','cluster_desc','cluster_size','cluster_proj_broad_ids','cluster_broad_ids','cluster_pert_ids','cluster_num_pert_ids_unique'});
 end
 
 % Create an empty matrix

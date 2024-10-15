@@ -26,9 +26,9 @@ loocv_save_gct = false % greater memory consumption than .gctx but can be opened
 
 loocv_show_hclust = false % apply hierarchical clustering to MOA correlation and rank of correlation matrices before plotting
 
-% inputs
-
 unique_kabx_cmpds_tbl_path = '../results/kabx_pert_ids_tbl_for_loocv.txt'
+
+% inputs
 
 corr_for_pcls_savepath = 'sGR_for_pcls_pearson_corr'
 
@@ -80,6 +80,8 @@ if prepare_loocv
     
     number_of_cmpds_loocv = length(unique_kabx_cmpds_list)
     
+    index_cmpds_loocv = 1:number_of_cmpds_loocv;
+    
     if demo_loocv
        if strcmp(demo_loocv_number_or_list, 'number')
            number_of_cmpds_loocv = max(1, demo_loocv_number_cmpds)
@@ -94,6 +96,8 @@ if prepare_loocv
            error('Invalid input for demo_loocv_number_or_list: number or list')
        end
     end
+    
+    disp(sprintf('Number of KABX compounds to be processed in LOOCV: %d', length(index_cmpds_loocv)))
 
     for i = index_cmpds_loocv
 

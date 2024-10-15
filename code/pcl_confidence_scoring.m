@@ -67,7 +67,7 @@ headt(col_meta_kabx_for_pcls)
 
 unique_pert_ids_in_kabx_for_pcls = unique(col_meta_kabx_for_pcls.pert_id);
 
-length(unique_pert_ids_in_kabx_for_pcls)
+disp(sprintf('Number of compounds (pert_ids) in KABX used for PCL construction: %d', length(unique_pert_ids_in_kabx_for_pcls)))
 
 % ## Parse gctx with the PCL similarity score (median correlation of treatment to each PCL's treatments)
 
@@ -105,9 +105,9 @@ disp(sprintf('Total number of dsCGI profiles / treatments (cids): %d', numel(uni
 unknown_target_description_values
 
 cidx = ~cellfun(@(x) any(strcmp(x, unknown_target_description_values)), s.cdesc(:, s.cdict('target_description')));
-disp('Number of KABX MOA-annotated dsCGI profiles')
+disp('Number of MOA-annotated dsCGI profiles')
 sum(cidx)
-disp('Number of unknown, test dsCGI profiles')
+disp('Number of dsCGI profiles lacking MOA annotation')
 sum(~cidx)
 
 % dsCGI profiles from MOA-annotated KABX compounds
@@ -115,6 +115,14 @@ sortrows(cell2table(tabulate(s.cdesc(cidx,s.cdict('target_description'))),...
     'VariableNames',{'target_description','count','percent'}),1)
 
 % dsCGI profiles from unannotated test compounds NA, N/A, NAN, Not Applicable
+
+disp('Unique target_description values for unknown treatments:');
+unique(s.cdesc(~cidx,s.cdict('target_description')))
+disp('Setting unknown target_description values to NA');
+s.cdesc(~cidx,s.cdict('target_description')) = {'NA'};
+disp('Now unique target_description values for unknown treatments:');
+unique(s.cdesc(~cidx,s.cdict('target_description')))
+
 sortrows(cell2table(tabulate(s.cdesc(~cidx,s.cdict('target_description'))),...
     'VariableNames',{'target_description','count','percent'}),1)
 
@@ -149,7 +157,7 @@ disp(size(ss_tbl));
 % %% Commented out code section to set target_description values for unknown compounds to empty cell as opposed to NA, NAN, or other unknown_target_description_values %%
 % unknown_target_description_values
 % idx_unknown = ismember(ss_tbl.target_description,unknown_target_description_values);
-% disp('Number of unknown, test dsCGI profile rows:');
+% disp('Number of dsCGI profile rows lacking MOA annotation:');
 % sum(idx_unknown)
 % disp('Unique target_description values for unknown treatments:');
 % unique(ss_tbl.target_description(idx_unknown))
@@ -592,7 +600,31 @@ for i = 1:num_pcls
     test_ppv = interp1(score_thresholds, ppv_full(idx_unique), all_trt_scores_test_cmpd, 'linear');
     
     % Ensure no missing values
-    test_ppv = fillmissing(test_ppv, 'nearest');
+    missing_indices = find(isnan(test_ppv));
+    num_missing_indices = length(missing_indices);
+    
+    if num_missing_indices > 0
+    
+        filled_indices = find(~isnan(test_ppv));
+        first_filled_index = filled_indices(1);
+    
+        missing_max_indices = missing_indices(missing_indices < filled_indices(1));
+        num_missing_max_indices = length(missing_max_indices);
+    
+        missing_min_indices = missing_indices(missing_indices > filled_indices(1));
+        num_missing_min_indices = length(missing_min_indices);
+        
+        if num_missing_max_indices > 0
+            test_ppv(missing_max_indices) = max(ppv_full(idx_unique));
+        end
+        
+        if num_missing_min_indices > 0
+            test_ppv(missing_min_indices) = min(ppv_full(idx_unique));
+        end
+    
+    end
+    
+    %test_ppv = fillmissing(test_ppv, 'nearest');
 
     assert(sum(isnan(test_ppv)) == 0)
     

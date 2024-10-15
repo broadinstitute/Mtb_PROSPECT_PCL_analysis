@@ -24,10 +24,10 @@ loocv_save_fig = true % .png files of spectral clustering input and output
 
 loocv_save_out = true % save tabular and gmt files for each MOA separately with the output of spectral clsutering
 
+unique_kabx_cmpds_tbl_path = '../results/kabx_pert_ids_tbl_for_loocv.txt'
+
 
 % general inputs
-
-unique_kabx_cmpds_tbl_path = '../results/kabx_pert_ids_tbl_for_loocv.txt'
 
 moa_figdir = 'verify_moas/figures'
 
@@ -163,33 +163,34 @@ for ii = 1:numel(moas)
     try
         [spec(ii).tmp_out_nonsingle,spec(ii).tmp_out,spec(ii).tmp_gmt,L,out_lap(ii).k,en,den,out_lap(ii).k_gap_den,out_lap(ii).k_med_gap_den,out_lap(ii).k_num_zero_plus_one,out_lap(ii).k_num_zero] = spectral_clustering_for_pcls(c,cr,moa_class,thrsh,k_type,outdir,save_out,save_fig,rng_seed,show_hclust);
         close all
+        
+        if size(spec(ii).tmp_gmt, 1) > 0
+
+            fields = unique([spec(ii).tmp_out_nonsingle.Properties.VariableNames,spec(ii).tmp_out.Properties.VariableNames]);
+
+            for jj = 1:numel(fields)
+                try
+                    spec(ii).tmp_out_nonsingle.(fields{jj}) = any2str(spec(ii).tmp_out_nonsingle.(fields{jj}));
+                catch ME
+                    true;
+                end
+
+                try
+                    spec(ii).tmp_out.(fields{jj}) = any2str(spec(ii).tmp_out.(fields{jj}));
+                catch ME
+                    true;
+                end
+            end
+
+            num_moas_represented = num_moas_represented + 1;
+        else
+            disp(moa_class)
+            disp("NOT INCLUDED - NO NON-SINGLETON CLUSTERS")
+        end
+        
     catch ME
         disp('Error from spectral clustering')
         disp(ME)
-    end
-    
-    if size(spec(ii).tmp_gmt, 1) > 0
-    
-        fields = unique([spec(ii).tmp_out_nonsingle.Properties.VariableNames,spec(ii).tmp_out.Properties.VariableNames]);
-    
-        for jj = 1:numel(fields)
-            try
-                spec(ii).tmp_out_nonsingle.(fields{jj}) = any2str(spec(ii).tmp_out_nonsingle.(fields{jj}));
-            catch ME
-                true;
-            end
-
-            try
-                spec(ii).tmp_out.(fields{jj}) = any2str(spec(ii).tmp_out.(fields{jj}));
-            catch ME
-                true;
-            end
-        end
-    
-        num_moas_represented = num_moas_represented + 1;
-    else
-        disp(moa_class)
-        disp("NOT INCLUDED - NO NON-SINGLETON CLUSTERS")
     end
     
 end
@@ -260,6 +261,8 @@ if prepare_loocv
     
     number_of_cmpds_loocv = length(unique_kabx_cmpds_list)
     
+    index_cmpds_loocv = 1:number_of_cmpds_loocv;
+    
     if demo_loocv
        if strcmp(demo_loocv_number_or_list, 'number')
            number_of_cmpds_loocv = max(1, demo_loocv_number_cmpds)
@@ -274,6 +277,8 @@ if prepare_loocv
            error('Invalid input for demo_loocv_number_or_list: number or list')
        end
     end
+    
+    disp(sprintf('Number of KABX compounds to be processed in LOOCV: %d', length(index_cmpds_loocv)))
     
     for i = index_cmpds_loocv
 
@@ -355,33 +360,34 @@ if prepare_loocv
             try
                 [spec(ii).tmp_out_nonsingle,spec(ii).tmp_out,spec(ii).tmp_gmt,L,out_lap(ii).k,en,den,out_lap(ii).k_gap_den,out_lap(ii).k_med_gap_den,out_lap(ii).k_num_zero_plus_one,out_lap(ii).k_num_zero] = spectral_clustering_for_pcls(c,cr,moa_class,thrsh,k_type,loo_outdir,loocv_save_out,loocv_save_fig,rng_seed,show_hclust);
                 close all
+                
+                if size(spec(ii).tmp_gmt, 1) > 0
+
+                    fields = unique([spec(ii).tmp_out_nonsingle.Properties.VariableNames,spec(ii).tmp_out.Properties.VariableNames]);
+
+                    for jj = 1:numel(fields)
+                        try
+                            spec(ii).tmp_out_nonsingle.(fields{jj}) = any2str(spec(ii).tmp_out_nonsingle.(fields{jj}));
+                        catch ME
+                            true;
+                        end
+
+                        try
+                            spec(ii).tmp_out.(fields{jj}) = any2str(spec(ii).tmp_out.(fields{jj}));
+                        catch ME
+                            true;
+                        end
+                    end
+
+                    num_moas_represented = num_moas_represented + 1;
+                else
+                    disp(moa_class)
+                    disp("NOT INCLUDED - NO NON-SINGLETON CLUSTERS")
+                end
+                
             catch ME
                 disp('Error from spectral clustering')
                 disp(ME)
-            end
-
-            if size(spec(ii).tmp_gmt, 1) > 0
-
-                fields = unique([spec(ii).tmp_out_nonsingle.Properties.VariableNames,spec(ii).tmp_out.Properties.VariableNames]);
-
-                for jj = 1:numel(fields)
-                    try
-                        spec(ii).tmp_out_nonsingle.(fields{jj}) = any2str(spec(ii).tmp_out_nonsingle.(fields{jj}));
-                    catch ME
-                        true;
-                    end
-
-                    try
-                        spec(ii).tmp_out.(fields{jj}) = any2str(spec(ii).tmp_out.(fields{jj}));
-                    catch ME
-                        true;
-                    end
-                end
-
-                num_moas_represented = num_moas_represented + 1;
-            else
-                disp(moa_class)
-                disp("NOT INCLUDED - NO NON-SINGLETON CLUSTERS")
             end
 
         end

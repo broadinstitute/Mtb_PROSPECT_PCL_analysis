@@ -20,8 +20,7 @@ demo_loocv_list_cmpds = {'BRD-K04804440','BRD-K01507359','BRD-K87202646','BRD-K5
 
 results_subdir_prefix = 'loocv_pcls/leave_out_cmpd_'
 
-loocv_save_out = false % save tabular file for each treatment's PCL similarity score
-
+unique_kabx_cmpds_tbl_path = '../results/kabx_pert_ids_tbl_for_loocv.txt'
 
 % previous Spectral Clustering inputs
 
@@ -113,6 +112,8 @@ if prepare_loocv
     
     number_of_cmpds_loocv = length(unique_kabx_cmpds_list)
     
+    index_cmpds_loocv = 1:number_of_cmpds_loocv;
+    
     if demo_loocv
        if strcmp(demo_loocv_number_or_list, 'number')
            number_of_cmpds_loocv = max(1, demo_loocv_number_cmpds)
@@ -127,6 +128,8 @@ if prepare_loocv
            error('Invalid input for demo_loocv_number_or_list: number or list')
        end
     end
+    
+    disp(sprintf('Number of KABX compounds to be processed in LOOCV: %d', length(index_cmpds_loocv)))
     
     for i = index_cmpds_loocv
     
