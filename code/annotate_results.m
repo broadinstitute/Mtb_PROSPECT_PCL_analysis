@@ -6,15 +6,23 @@ wkdir = '../results';
 mk_cd_dir(wkdir, false);
 %imatlab_export_fig('print-png')
 
+% input whether to evaluate original cluster results produced using Matlab 2020a
+
+use_matlab_2020a_clusters = true % Matlab 2020b featured changes to the built-in sum, eigs function and others that slightly alter the cluster results even when controlling for the random seed, number of workers for multi-threading, and order of treatments in the input matrices
+
+matlab_2020a_clusters_outdir_name = 'clusters_spectral_clustering_thrsh_rank_le20_k_med_gap_den_matlab_2020a'
+
+matlab_2020a_clusters_pcls_results_outdir_name = 'pcls_spectral_clustering_thrsh_rank_le20_k_med_gap_den_matlab_2020a'
+
 % loocv inputs
 
-prepare_loocv = false
+prepare_loocv = true
 
 demo_loocv = true
 
 demo_loocv_number_or_list = 'number' % 'number' or 'list'
 
-demo_loocv_number_cmpds = 2
+demo_loocv_number_cmpds = 1
 
 demo_loocv_list_cmpds = {'BRD-K04804440','BRD-K01507359','BRD-K87202646','BRD-K59853741', 'BRD-K27302037'} % Ciprofloxacin, Rifampin, Isoniazid, Q203, Thioacetazone
 
@@ -42,10 +50,6 @@ else
     outdir_name = sprintf('pcls_spectral_clustering_thrsh_rank_le%d_%s', thrsh_rank, k_type)
 end
 
-outdir = fullfile(wkdir, outdir_name)
-
-mk_cd_dir(outdir, false);
-
 exist(rr_path) > 0
 exist(fgr_path) > 0
 
@@ -66,6 +70,46 @@ headt(fgr)
 rr.cid(~ismember(rr.cid, fgr.cid))
 
 fgr.cid(~ismember(fgr.cid, rr.cid))
+
+% # Process PCL similarity scoring results from uploaded Matlab 2020a clusters
+
+if use_matlab_2020a_clusters
+    outdir = fullfile(wkdir, matlab_2020a_clusters_pcls_results_outdir_name)
+
+    mk_cd_dir(outdir, false);
+
+    % ## Full model section
+
+    ls(outdir)
+
+    % ### Add replicate reproducibility and fraction of GR to existing GCTs
+
+    % Create gcts
+    fields = {'cluster_median_corr','pcl_similarity_score','pcl_and_moa_agree'};
+
+    for ii = 1:numel(fields)
+        disp(fields{ii})
+        g = glob(fullfile(outdir,strcat(fields{ii},'_n*.gctx')))
+        s = parse_gctx(g{1});
+        s.chd
+        s.cid(~ismember(s.cid, rr.cid))
+        s.cid(~ismember(s.cid, fgr.cid))
+        s = annotate_ds(s,table2struct(rr(:,{'cid','rcorr','rcorr_rank'})),'dim','column','keyfield','cid');
+        s = annotate_ds(s,table2struct(fgr(:,{'cid','x_median_total_count','frac_gr_le0_30'})),'dim','column','keyfield','cid');
+        s.chd
+        
+        mkgctx(fullfile(outdir,strcat(fields{ii})), s)
+    end
+
+    s.chd
+    s.rhd
+end
+
+% # Process PCL similarity scoring results from newly processed Matlab 2020b clusters
+
+outdir = fullfile(wkdir, outdir_name)
+
+mk_cd_dir(outdir, false);
 
 % ## Full model section
 

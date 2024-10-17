@@ -14,7 +14,7 @@ demo_loocv = true
 
 demo_loocv_number_or_list = 'number' % 'number' or 'list'
 
-demo_loocv_number_cmpds = 2
+demo_loocv_number_cmpds = 1
 
 demo_loocv_list_cmpds = {'BRD-K04804440','BRD-K01507359','BRD-K87202646','BRD-K59853741', 'BRD-K27302037'} % Ciprofloxacin, Rifampin, Isoniazid, Q203, Thioacetazone
 

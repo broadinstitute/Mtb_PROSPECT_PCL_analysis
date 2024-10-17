@@ -44,6 +44,12 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 		show_hclust = true; 
 	end
 
+	% Set random_seed number if not provided in the input
+	if isempty(random_seed)
+		random_seed = 0; 
+	end
+	rng(random_seed, 'twister'); % set seed and rng for reproducibility; rng(0, 'twister') is the Matlab factory default
+
 	plot_spacer = 0;
 	plot_row_spacer = 0;
 	c_orig = c;
@@ -81,11 +87,13 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 	% Create adjacency matrix
 	adj_mat = double(cr.mat<=thrsh);
 
+	disp('Finding eigenvalues and eigenvectors of normalized Laplacian matrix');
 	% Normalized Laplacian and find eigenvalues and eigenvectors to estimate number of K clusters in MOA class
 	[Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_plus_one,k_num_zero] = create_laplacian_matrix(adj_mat,'symmetric',true,k_type);
 	%moa_class_str = strrep(strrep(moa_class,' ','_'),'/','-');
     %saveas_png(gcf,outdir,[moa_class_str,'_eigenvalues.png'])
     %close(gcf)
+	disp('Success finding eigenvalues and eigenvectors of normalized Laplacian matrix');
 
 	% Create blue-white-red colormap
 	bwr_colormap = [linspace(0, 1, 128)', linspace(0, 1, 128)', ones(128, 1); ...
@@ -95,6 +103,7 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 	    set(gcf,'PaperPosition',[0,0,20,40])
 	    sgtitle(moa_class,'FontWeight','bold','FontSize',20,'Interpreter','none')
     
+		disp('Plotting input matrices and eigenvalues');
 	    s1 = subplot(5+plot_row_spacer,2,1);
 	    imagesc(c_orig.mat)
 	    colormap(s1,bwr_colormap)
@@ -152,13 +161,26 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 		text(k+0.5,yl(2)*0.95,sprintf('k: %d',k),'interpreter','none','FontSize',12)
 		legend('show', 'Location', 'east', 'FontSize', 12, 'TextColor', 'black', 'Box', 'off')
 		xlabel(sprintf('Number of eigenvectors\n(sorted from lowest to highest eigenvalue)'))
+		
+		disp('Success plotting input matrices and eigenvalues');
 
+	disp('Running spectral clustering');
 	[idx,eigenvec,eigenval] = spectralcluster(adj_mat,k,'Distance','precomputed','LaplacianNormalization','symmetric');
+	disp('Success running spectral clustering');
+	
+	if any(~isfinite(idx))
+		error('Non-finite values found in idx. All values must be finite.');
+	end
+	
 	tmp = repmat(idx,1,size(adj_mat,2));
 	tmp_plot = tmp;
 	tmp = tmp==tmp'; % symmetric, block, logical matrix where 1 means the two treatments are in the same cluster, 0 otherwise
+	if any(~isfinite(tmp(:)))
+		error('Non-finite values found in tmp. All values must be finite.');
+	end
 	tmp_g = graph(double(tmp),'omitselfloops');
 
+	disp('Creating output table');
 	% Create output tables
 	col_meta_tmp = cell2table([cr.cid,cr.cdesc],'VariableNames',['cid';cr.chd]);
 	
@@ -174,6 +196,8 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 	out.moa_class = repmat({moa_class},size(out,1),1);
 	out = join(out,col_meta_tmp,'Keys','cid');
 
+	disp('Success creating output table');
+
 	%%% Cluster membership error check - check cluster ids are accurately annotated to treatment after outerjoin operation %%%
 	checkOutTable = sortrows(out(:, {'cid', 'cluster_id'}), {'cluster_id', 'cid'});
 
@@ -184,14 +208,33 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 	assert(isequal(checkOutTable, checkTable), 'The tables are not identical.');
 	%%%
 	
+	disp('Creating block matrix with cluster IDs');
 	% Create block matrix with clusters aligned along the diagonal
 	tmp_cluster_id = repmat(cluster_id,1,size(adj_mat,2)); % repeat the cluster_id vector rowwise to create a matrix
+
+	if any(~isfinite(tmp_cluster_id(:)))
+		error('Non-finite values found in tmp_cluster_id. All values must be finite.');
+	end
 	
 	tmp_cluster_id(~tmp) = 0; % apply the logical, block matrix to set the treatments that are not in the same cluster to 0 and keep the treatments that are in the same cluster as the numeric cluster_id
+
+	if any(~isfinite(tmp_cluster_id(:)))
+		error('Non-finite values found in tmp_cluster_id after applying logical, block matrix. All values must be finite.');
+	end
 	
 	[sortedLabels, sortOrder] = sort(cluster_id);
 
 	tmp_cluster_id_sorted_by_cluster = tmp_cluster_id(sortOrder, sortOrder); % sort the block matrix by cluster_id so that clusters are aligned along the diagonal
+
+	% Check if c.mat contains non-finite values
+	if any(~isfinite(c.mat(:)))
+		error('Non-finite values found in c.mat. All values must be finite.');
+	end
+
+	% Check if cr.mat contains non-finite values
+	if any(~isfinite(cr.mat(:)))
+		error('Non-finite values found in cr.mat. All values must be finite.');
+	end
 	
 	c_mat_sorted_by_cluster = c.mat(sortOrder, sortOrder); % sort the correlation matrix by cluster_id so that clusters are aligned along the diagonal
 	
@@ -202,7 +245,9 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 	assert(all(orig_check), 'Problem sorting cluster membership matrix by original treatment order')
     
 	tmp_cluster_id_sorted_by_orig_trt_order = tmp_cluster_id(orig_indices, orig_indices); % sort the block matrix by the original treatment order of the correlation matrix
-    
+	disp('Success creating block matrix with cluster IDs');
+		disp('Plotting spectral clustering output matrices and graphs');
+
 		s6 = subplot(5+plot_row_spacer,2,6+plot_spacer);
 		imagesc(tmp_cluster_id_sorted_by_orig_trt_order)
 		colormap(s6, colorcube(k+1)) % different color for each cluster ID
@@ -212,9 +257,10 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 		title(sprintf('Clusters from spectral clustering (k = %d)\n(original treatment order)',k))
 
 		s7 = subplot(5+plot_row_spacer,2,7+plot_spacer);
-		plot(tmp_g)
-		f = findobj(s7);
-		f(2).NodeFontSize = 6;
+		disp(tmp_g);
+		%plot(tmp_g)
+		%f = findobj(s7);
+		%f(2).NodeFontSize = 6;
 		if show_hclust
 			title(sprintf('Graphs from spectral clustering (k = %d)\n(row index is hierarchical clustering treatment order)', k))
 		else
@@ -244,6 +290,8 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 		caxis([1,thrsh+1])
 		colorbar
 		title(sprintf('Average rank in Pearson\ncorrelation across KABX\n(re-sorted by cluster)'))
+
+		disp('Success plotting spectral clustering output matrices and graphs');
 
 	moa_class_str = strrep(strrep(moa_class,' ','_'),'/','-');
 	if save_fig

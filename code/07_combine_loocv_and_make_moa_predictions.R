@@ -1,0 +1,5311 @@
+library(tidyverse)
+library(ggpubr)
+library(cmapR)
+library(pROC)
+
+datadir = '../data'
+wkdir = '../results'
+
+# loocv inputs
+
+prepare_loocv = TRUE
+
+demo_loocv = TRUE
+
+demo_loocv_number_or_list = 'number' # 'number' or 'list'
+
+demo_loocv_number_cmpds = 2
+
+demo_loocv_list_cmpds = c('BRD-K04804440','BRD-K01507359','BRD-K87202646','BRD-K59853741', 'BRD-K27302037') # Ciprofloxacin, Rifampin, Isoniazid, Q203, Thioacetazone
+
+results_subdir_prefix = 'loocv_pcls/leave_out_cmpd_'
+
+unique_kabx_cmpds_tbl_path = '../results/kabx_pert_ids_tbl_for_loocv.txt'
+
+# previous Spectral Clustering inputs
+
+thrsh_rank = 20 # threshold for average pairwise rank of correlation across KABX to connect treatments as mutual nearest-neighbors
+
+dynamic_thrsh_per_moa = FALSE # if true then threshold is round(log(size of MOA) * thrsh_rank), otherwise identical threshold for every MOA
+
+k_type = 'k_med_gap_den' # eigengap heuristic to take for estimating number of K clusters: k_num_zero, k_num_zero_plus_one, k_med_gap_den, k_gap_den (see create_laplacian_matrix.m for additional information)
+
+if (dynamic_thrsh_per_moa) {
+    outdir_name <- sprintf('pcls_spectral_clustering_thrsh_rank_le%dxlogsize_%s', thrsh_rank, k_type) # log(MOA size), i.e. the number of treatments/dsCGI profiles in the MOA
+} else {
+    outdir_name <- sprintf('pcls_spectral_clustering_thrsh_rank_le%d_%s', thrsh_rank, k_type)
+}
+print(outdir_name)
+
+outdir = file.path(wkdir, outdir_name)
+print(outdir)
+if (dir.exists(outdir)) {
+  cat("The specified PCL results folder exists.\n")
+} else {
+  cat("The specified PCL results folder does not exist.\n")
+}
+
+# step-specific inputs
+
+pcls_filename = 'pcls.gmt'
+
+any_dose_gr_filename = 'any_dose_min_gr.rds'
+
+max_dose_gr_filename = 'max_dose_min_gr.rds'
+
+out_tbl_savename = 'by_pcl_similarity_to_confidence_score_thresholds_from_training_on_kabx.txt'
+
+opt_tbl_savename = 'by_pcl_high_confidence_similarity_score_thresholds_from_training_on_kabx.txt'
+
+out_tbl_test_cmpd_savename = 'by_pcl_similarity_to_confidence_score_test_cmpd_results.txt'
+
+pcl_train_summ_savename = "pcl_similarity_to_confidence_score_training_summary.csv"
+
+pcl_members_and_train_summ_savename = "pcl_members_and_similarity_to_confidence_score_training_summary.csv"
+
+pcl_members_tbl_savename = "pcl_cluster_members_table.csv"
+
+pcl_members_summary_tbl_savename = "pcl_cluster_members_summary_table.csv"
+
+pcl_gct_rdesc_metadata_savename = "pcl_gct_rdesc_metadata.csv"
+
+col_meta_kabx_for_pcls_filename = 'col_meta_kabx_for_pcls.txt'
+
+loocv_opt_tbl_combined_rds_savename = "loocv_combined_by_pcl_high_confidence_similarity_score_thresholds_from_training_on_kabx_tbls.rds"
+
+loocv_test_cmpd_results_combined_rds_savename = "loocv_combined_test_cmpd_results.rds"
+
+
+loocv_opt_tbl_combined_rds_full_shared_filename = "loocv_combined_by_pcl_high_confidence_similarity_score_thresholds_from_training_on_kabx_tbls_full_shared.rds"
+
+loocv_test_cmpd_results_combined_rds_full_shared_filename = "loocv_combined_test_cmpd_results_full_shared.rds"
+
+# PCL-based MOA prediction table outputs
+
+test_cmpd_pcl_predictions_simplify_tbl_savename = "test_cmpd_pcl_based_moa_predictions_simplified_table.csv"
+
+test_cmpd_pcl_predictions_full_tbl_savename = "test_cmpd_pcl_based_moa_predictions_full_metadata_table.csv"
+
+kabx_loocv_pcl_predictions_simplify_tbl_savename = "kabx_loocv_pcl_based_moa_predictions_simplified_table.csv"
+
+kabx_loocv_pcl_predictions_full_tbl_savename = "kabx_loocv_pcl_based_moa_predictions_full_metadata_table.csv"
+
+kabx_demo_loocv_pcl_predictions_simplify_tbl_savename = "kabx_demo_loocv_pcl_based_moa_predictions_simplified_table.csv"
+
+kabx_demo_loocv_pcl_predictions_full_tbl_savename = "kabx_demo_loocv_pcl_based_moa_predictions_full_metadata_table.csv"
+
+any_dose_gr_path = file.path(datadir, any_dose_gr_filename)
+print(any_dose_gr_path)
+
+max_dose_gr_path = file.path(datadir, max_dose_gr_filename)
+print(max_dose_gr_path)
+
+pcl_similarity_score_path = list.files(path = outdir, pattern = "pcl_similarity_score_n.*\\.gctx", full.names = TRUE)
+print(pcl_similarity_score_path)
+
+pcl_confidence_score_path = list.files(path = outdir, pattern = "pcl_confidence_score_n.*\\.gctx", full.names = TRUE)
+print(pcl_confidence_score_path)
+
+pcls_gmt_path = list.files(path = outdir, pattern = pcls_filename, full.names = TRUE)
+print(pcls_gmt_path)
+
+clusters_tbl_path = list.files(path = str_replace(outdir, "pcls", "clusters"), pattern = "clusters_spectral_clust.txt", full.names = TRUE)
+print(clusters_tbl_path)
+
+pcl_similarity_to_confidence_score_tbl_path = list.files(path = outdir, pattern = out_tbl_savename, full.names = TRUE)
+print(pcl_similarity_to_confidence_score_tbl_path)
+
+pcl_similarity_to_confidence_score_test_cmpd_results_path = list.files(path = outdir, pattern = out_tbl_test_cmpd_savename, full.names = TRUE)
+print(pcl_similarity_to_confidence_score_test_cmpd_results_path)
+
+pcl_high_confidence_similarity_score_thresholds_tbl_path = list.files(path = outdir, pattern = opt_tbl_savename, full.names = TRUE)
+print(pcl_high_confidence_similarity_score_thresholds_tbl_path)
+
+col_meta_kabx_for_pcls_path = list.files(path = wkdir, pattern = col_meta_kabx_for_pcls_filename, full.names = TRUE)
+print(col_meta_kabx_for_pcls_path)
+
+loocv_opt_tbl_combined_rds_full_shared_path = list.files(path = datadir, pattern = loocv_opt_tbl_combined_rds_full_shared_filename, full.names = TRUE)
+print(loocv_opt_tbl_combined_rds_full_shared_path)
+
+loocv_test_cmpd_results_combined_rds_full_shared_path = list.files(path = datadir, pattern = loocv_test_cmpd_results_combined_rds_full_shared_filename, full.names = TRUE)
+print(loocv_test_cmpd_results_combined_rds_full_shared_path)
+
+calc_f1 = function(ppv, tpr, num_decimals = 3){
+    if(is.nan(ppv) | is.nan(tpr)){ 
+        return(NaN)
+    } else if(ppv == 0 & tpr == 0){
+        return(0)
+    } else { 
+        return(round(((2*ppv*tpr) / (ppv + tpr)), num_decimals))
+    }
+}
+
+# ## Process Results GCTs
+
+pcl_similarity_score_all_pcls = parse_gctx(pcl_similarity_score_path)
+
+pcl_similarity_score_all_pcls
+
+pcl_confidence_score_all_pcls = parse_gctx(pcl_confidence_score_path)
+
+pcl_confidence_score_all_pcls
+
+# ### Process PCL GMT
+
+pcls_gmt = parse_gmt(pcls_gmt_path)
+
+length(pcls_gmt)
+head(pcls_gmt)
+
+clusters_tbl = read.delim(clusters_tbl_path)
+dim(clusters_tbl)
+head(clusters_tbl)
+
+clusters_tbl %>%
+    summarize(
+        n_distinct(group_id)
+        )
+
+pcls_tbl = clusters_tbl %>%
+    filter(group_id %in% names(pcls_gmt))
+
+pcls_tbl %>%
+    summarize(
+        n_distinct(group_id)
+        )
+
+dim(pcls_tbl)
+pcls_tbl %>%
+    head()
+
+pcls_tbl <- pcls_tbl %>%
+    mutate(
+        rid = str_c(moa_class, ":", "group", cluster_id),
+        pcl_desc = moa_class,
+        #proj_broad_id = str_c(project_id, ":", broad_id),
+        .before = cid
+    )
+
+pcls_tbl %>%
+    group_by(rid, pcl_desc) %>%
+    tally() %>%
+    janitor::adorn_totals()
+
+pcls_tbl %>%
+    select(rid, pcl_desc) %>%
+    distinct() %>%
+    janitor::tabyl(pcl_desc) %>%
+    arrange(desc(percent)) %>%
+    janitor::adorn_totals()
+
+pcls_tbl %>%
+    filter(cluster_size > 1) %>%
+    group_by(rid, pcl_desc) %>%
+    tally() %>%
+    janitor::adorn_totals()
+
+pcls_tbl %>%
+    filter(cluster_size > 1) %>%
+    select(rid, pcl_desc) %>%
+    distinct() %>%
+    janitor::tabyl(pcl_desc) %>%
+    arrange(desc(percent)) %>%
+    janitor::adorn_totals()
+
+names(pcls_tbl)
+
+sub_pcls_tbl <- pcls_tbl %>%
+    select(rid, pcl_desc, moa_class,
+           cluster_size,
+           cluster_id,
+           cid, proj_broad_id, broad_id, pert_id, 
+           pert_dose, pert_idose, project_id, x_subproject_id
+          ) %>% rename("pcl_cluster_size" = "cluster_size", "pcl_moa_cluster_id" = "cluster_id")
+
+check_rids <- sub_pcls_tbl %>%
+    filter(pcl_cluster_size > 1) %>%
+    pull(rid)
+
+length(check_rids)
+head(check_rids)
+
+all(check_rids %in% pcl_similarity_score_all_pcls@rid)
+
+sub_pcls_tbl <- sub_pcls_tbl %>%
+    group_by(rid) %>%
+    mutate(
+        pcl_cids = paste0(unique(cid), collapse = "|"),
+        pcl_proj_broad_ids = paste0(unique(proj_broad_id), collapse = "|"),
+        pcl_broad_ids = paste0(unique(broad_id), collapse = "|"),
+        pcl_pert_ids = paste0(unique(pert_id), collapse = "|"),
+        pcl_project_ids = paste0(unique(project_id), collapse = "|"),
+        pcl_x_subproject_ids = paste0(unique(x_subproject_id), collapse = "|"),
+        
+        pcl_size = length(unique(cid)),
+        pcl_num_proj_broad_ids_unique = length(unique(proj_broad_id)),
+        pcl_num_broad_ids_unique = length(unique(broad_id)),
+        pcl_num_pert_ids_unique = length(unique(pert_id)),
+        pcl_num_project_ids_unique = length(unique(project_id)),
+        pcl_num_x_subproject_ids_unique = length(unique(x_subproject_id)),
+    )
+
+head(sub_pcls_tbl) 
+
+sub_pcls_tbl %>%
+    filter(pcl_num_proj_broad_ids_unique > 1) %>%
+    head()
+
+all(sub_pcls_tbl$pcl_cluster_size == sub_pcls_tbl$pcl_size)
+
+sub_pcls_tbl_long <- sub_pcls_tbl %>%
+    select(rid:x_subproject_id, pcl_size:pcl_num_x_subproject_ids_unique)
+
+dim(sub_pcls_tbl_long)
+head(sub_pcls_tbl_long)
+
+sub_pcls_tbl_summ <- sub_pcls_tbl %>%
+    select(rid:pcl_moa_cluster_id, pcl_cids:pcl_num_x_subproject_ids_unique) %>%
+    distinct()
+
+dim(sub_pcls_tbl_summ)
+head(sub_pcls_tbl_summ)
+
+# #### Add PCL training/QC info to PCL summary table
+
+pcl_similarity_to_confidence_score_tbl = read.delim(pcl_similarity_to_confidence_score_tbl_path)
+
+dim(pcl_similarity_to_confidence_score_tbl)
+head(pcl_similarity_to_confidence_score_tbl)
+
+pcl_similarity_to_confidence_score_tbl <- pcl_similarity_to_confidence_score_tbl %>%
+    mutate(
+        moa_is_separable = TRUE
+        )
+
+pcl_similarity_to_confidence_score_tbl %>%
+    select(rid, pcl_desc, moa_is_separable) %>% distinct() %>%
+    janitor::tabyl(moa_is_separable) %>%
+    arrange(desc(percent)) %>% 
+    janitor::adorn_totals()
+
+pcl_similarity_to_confidence_score_tbl %>%
+    select(rid, pcl_desc, moa_is_separable) %>% distinct() %>%
+    janitor::tabyl(pcl_desc, moa_is_separable) %>%
+    #arrange(desc(percent)) %>% 
+    janitor::adorn_totals()
+
+pcl_similarity_to_confidence_score_tbl %>%
+    select(rid, pcl_desc, moa_is_separable) %>% distinct() %>%
+    filter(moa_is_separable) %>%
+    janitor::tabyl(pcl_desc) %>%
+    arrange(desc(percent)) %>% 
+    janitor::adorn_totals()
+
+add2pcl_high_confidence_similarity_score_thresholds_tbl <- pcl_similarity_to_confidence_score_tbl %>%
+    group_by(rid) %>%
+    arrange(desc(pcl_similarity_score)) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = T)
+    ) %>% 
+    slice(1) %>%
+    mutate(
+        first_score_pcl_confidence_score = pcl_confidence_score
+    ) %>%
+    select(rid, pcl_desc,
+           #cmpd_index,
+           first_score_pcl_confidence_score,
+           max_pcl_confidence_score,
+            moa_is_separable
+          )
+
+dim(add2pcl_high_confidence_similarity_score_thresholds_tbl)
+head(add2pcl_high_confidence_similarity_score_thresholds_tbl)
+
+add2pcl_high_confidence_similarity_score_thresholds_tbl %>%
+    filter(moa_is_separable) %>%
+    janitor::tabyl(first_score_pcl_confidence_score) %>%
+    arrange(desc(percent)) %>% 
+    janitor::adorn_totals()
+
+add2pcl_high_confidence_similarity_score_thresholds_tbl %>%
+    filter(moa_is_separable) %>%
+    janitor::tabyl(max_pcl_confidence_score) %>%
+    arrange(desc(percent)) %>% 
+    janitor::adorn_totals()
+
+#add2pcl_high_confidence_similarity_score_thresholds_tbl %>%
+#    filter(moa_is_separable) %>%
+#    janitor::tabyl(cmpd_index) %>%
+#    arrange(desc(percent)) %>% 
+#    janitor::adorn_totals()
+
+add2pcl_high_confidence_similarity_score_thresholds_tbl %>%
+    filter(!moa_is_separable) %>%
+    janitor::tabyl(first_score_pcl_confidence_score) %>%
+    arrange(desc(percent)) %>% 
+    janitor::adorn_totals()
+
+add2pcl_high_confidence_similarity_score_thresholds_tbl %>%
+    filter(!moa_is_separable) %>%
+    janitor::tabyl(max_pcl_confidence_score) %>%
+    arrange(desc(percent)) %>% 
+    janitor::adorn_totals()
+
+#add2pcl_high_confidence_similarity_score_thresholds_tbl %>%
+#    filter(!moa_is_separable) %>%
+#    janitor::tabyl(cmpd_index) %>%
+#    arrange(desc(percent)) %>% 
+#    janitor::adorn_totals()
+
+pcl_high_confidence_similarity_score_thresholds_tbl <- read.delim(pcl_high_confidence_similarity_score_thresholds_tbl_path)
+
+dim(pcl_high_confidence_similarity_score_thresholds_tbl)
+head(pcl_high_confidence_similarity_score_thresholds_tbl)
+
+pcl_high_confidence_similarity_score_thresholds_tbl <- pcl_high_confidence_similarity_score_thresholds_tbl %>%
+    mutate(
+        rid = pcl_rid,
+        .before = pcl_rid
+    )
+
+dim(pcl_high_confidence_similarity_score_thresholds_tbl)
+head(pcl_high_confidence_similarity_score_thresholds_tbl)
+
+pcl_high_confidence_similarity_score_thresholds_tbl <- inner_join(pcl_high_confidence_similarity_score_thresholds_tbl,
+                          add2pcl_high_confidence_similarity_score_thresholds_tbl)
+
+dim(pcl_high_confidence_similarity_score_thresholds_tbl)
+head(pcl_high_confidence_similarity_score_thresholds_tbl)
+
+gghistogram(
+    pcl_high_confidence_similarity_score_thresholds_tbl,
+    x = "pcl_auc",
+    facet.by = "moa_is_separable",
+    color = "moa_is_separable"
+    )
+
+pcl_train_summ <- pcl_high_confidence_similarity_score_thresholds_tbl
+
+dim(pcl_train_summ)
+head(pcl_train_summ)
+
+setdiff(names(pcl_high_confidence_similarity_score_thresholds_tbl), names(pcl_train_summ))
+
+sub_pcls_tbl_long <- sub_pcls_tbl_long %>%
+    mutate(
+        pcl_rid = rid,
+        .after = rid
+        )
+
+dim(sub_pcls_tbl_long)
+head(sub_pcls_tbl_long)
+
+join_pcls_tbl_long_train_summ <- left_join(sub_pcls_tbl_long,
+                                           pcl_train_summ)
+
+dim(join_pcls_tbl_long_train_summ)
+head(join_pcls_tbl_long_train_summ)
+
+sub_pcls_tbl_summ <- sub_pcls_tbl_summ %>%
+    mutate(
+        pcl_rid = rid,
+        .after = rid
+        )
+
+dim(sub_pcls_tbl_summ)
+head(sub_pcls_tbl_summ)
+
+join_pcls_tbl_summ_train_summ <- left_join(sub_pcls_tbl_summ,
+                                           pcl_train_summ)
+
+dim(join_pcls_tbl_summ_train_summ)
+head(join_pcls_tbl_summ_train_summ)
+
+join_pcls_tbl_summ_train_summ <- join_pcls_tbl_summ_train_summ %>%
+    mutate(
+            pcl_used_in_scoring_and_training = !is.na(pcl_auc),
+            .before = pcl_n
+        )
+
+join_pcls_tbl_summ_train_summ %>%
+    janitor::tabyl(pcl_used_in_scoring_and_training) %>%
+    arrange(desc(percent)) %>%
+    janitor::adorn_totals()
+
+join_pcls_tbl_summ_train_summ %>%
+    filter(pcl_size <= 1) %>%
+    janitor::tabyl(pcl_used_in_scoring_and_training) %>%
+    arrange(desc(percent)) %>%
+    janitor::adorn_totals()
+
+join_pcls_tbl_summ_train_summ %>%
+    filter(pcl_size > 1) %>%
+    janitor::tabyl(pcl_used_in_scoring_and_training) %>%
+    arrange(desc(percent)) %>%
+    janitor::adorn_totals()
+
+gghistogram(join_pcls_tbl_summ_train_summ$pcl_size)
+
+join_pcls_tbl_summ_train_summ %>%
+    janitor::tabyl(pcl_size, pcl_used_in_scoring_and_training) %>%
+    #arrange(desc(percent)) %>%
+    janitor::adorn_totals()
+
+join_pcls_tbl_summ_train_summ %>%
+    janitor::tabyl(pcl_size, moa_is_separable) %>%
+    #arrange(desc(percent)) %>%
+    janitor::adorn_totals()
+
+names(join_pcls_tbl_summ_train_summ)
+
+sub_pcls_tbl_summ_train_summ <- join_pcls_tbl_summ_train_summ %>%
+    select(rid:pcl_desc,
+           pcl_size,
+           #pcl_cids:moa_is_separable
+           everything()
+          )
+
+dim(sub_pcls_tbl_summ_train_summ)
+head(sub_pcls_tbl_summ_train_summ)
+
+pcl_train_summ
+
+dim(sub_pcls_tbl_long)
+
+sub_pcls_tbl_long <- right_join(sub_pcls_tbl_summ_train_summ %>%
+              select(rid, pcl_used_in_scoring_and_training),
+           sub_pcls_tbl_long,
+              multiple = "all"
+          )
+
+dim(sub_pcls_tbl_long)
+head(sub_pcls_tbl_long)
+
+dim(sub_pcls_tbl_summ)
+
+sub_pcls_tbl_summ <- right_join(sub_pcls_tbl_summ_train_summ %>%
+              select(rid, pcl_used_in_scoring_and_training),
+           sub_pcls_tbl_summ
+          )
+
+dim(sub_pcls_tbl_summ)
+head(sub_pcls_tbl_summ)
+
+dim(pcl_train_summ)
+
+pcl_train_summ <- right_join(sub_pcls_tbl_summ_train_summ %>%
+              select(rid, pcl_used_in_scoring_and_training),
+           pcl_train_summ
+          )
+
+dim(pcl_train_summ)
+head(pcl_train_summ)
+
+write_csv(pcl_train_summ, file.path(outdir, pcl_train_summ_savename))
+
+sub_pcl_tbl_summ_train_summ <- sub_pcls_tbl_summ_train_summ %>% 
+    select(rid, pcl_used_in_scoring_and_training,
+           everything())
+
+dim(sub_pcls_tbl_summ_train_summ)
+head(sub_pcl_tbl_summ_train_summ)
+
+dim(sub_pcls_tbl_summ_train_summ)
+
+sub_pcls_tbl_summ_train_summ %>%
+    filter(pcl_used_in_scoring_and_training) %>%
+    dim()
+
+write_csv(sub_pcls_tbl_summ_train_summ %>% filter(pcl_used_in_scoring_and_training), file.path(outdir, pcl_members_and_train_summ_savename))
+
+write_csv(sub_pcls_tbl_long, file.path(outdir, pcl_members_tbl_savename))
+
+write_csv(sub_pcls_tbl_summ, file.path(outdir, pcl_members_summary_tbl_savename))
+
+# ### Annotate rids with additional PCL metadata
+
+pcl_metadata2add <- sub_pcls_tbl_summ_train_summ
+
+pcl_metadata2add <- pcl_metadata2add %>%
+    mutate(
+        id = rid,
+        .before = rid
+    )
+
+dim(pcl_metadata2add)
+head(pcl_metadata2add)
+
+# #### PCL Similarity Score All PCLs gct
+
+identical(pcl_similarity_score_all_pcls@rid, 
+          pcl_metadata2add %>%
+    filter(rid %in% pcl_similarity_score_all_pcls@rid) %>% pull(rid))
+
+length(pcl_similarity_score_all_pcls@rid)
+
+pcl_similarity_score_all_pcls <- subset_gct(pcl_similarity_score_all_pcls, 
+           rid = pcl_metadata2add %>%
+    filter(rid %in% pcl_similarity_score_all_pcls@rid) %>% pull(rid))
+
+length(pcl_similarity_score_all_pcls@rid)
+
+identical(pcl_similarity_score_all_pcls@rid, 
+          pcl_metadata2add %>%
+    filter(rid %in% pcl_similarity_score_all_pcls@rid) %>% pull(rid))
+
+setdiff(names(pcl_similarity_score_all_pcls@rdesc), names(pcl_metadata2add))
+
+setdiff(names(pcl_metadata2add), names(pcl_similarity_score_all_pcls@rdesc))
+
+dim(pcl_metadata2add)
+
+pcl_metadata2add <- inner_join(pcl_metadata2add,
+           pcl_similarity_score_all_pcls@rdesc %>%
+               select(id, setdiff(names(pcl_similarity_score_all_pcls@rdesc), names(pcl_metadata2add)))
+           )
+
+dim(pcl_metadata2add)
+
+pcl_similarity_score_all_pcls@rdesc <- pcl_metadata2add %>%
+    filter(rid %in% pcl_similarity_score_all_pcls@rid)
+
+identical(pcl_similarity_score_all_pcls@rid, pcl_similarity_score_all_pcls@rdesc$id)
+
+# #### PCL Confidence Score All PCLs gct
+
+identical(pcl_confidence_score_all_pcls@rid, 
+          pcl_metadata2add %>%
+    filter(rid %in% pcl_confidence_score_all_pcls@rid) %>% pull(rid))
+
+length(pcl_confidence_score_all_pcls@rid)
+
+pcl_confidence_score_all_pcls <- subset_gct(pcl_confidence_score_all_pcls, 
+           rid = pcl_metadata2add %>%
+    filter(rid %in% pcl_confidence_score_all_pcls@rid) %>% pull(rid))
+
+length(pcl_confidence_score_all_pcls@rid)
+
+identical(pcl_confidence_score_all_pcls@rid, 
+          pcl_metadata2add %>%
+    filter(rid %in% pcl_confidence_score_all_pcls@rid) %>% pull(rid))
+
+setdiff(names(pcl_confidence_score_all_pcls@rdesc), names(pcl_metadata2add))
+
+setdiff(names(pcl_metadata2add), names(pcl_confidence_score_all_pcls@rdesc))
+
+pcl_confidence_score_all_pcls@rdesc <- pcl_metadata2add %>%
+    filter(rid %in% pcl_confidence_score_all_pcls@rid)
+
+identical(pcl_confidence_score_all_pcls@rid, pcl_confidence_score_all_pcls@rdesc$id)
+
+# ### Save PCL metadata for GCT rdesc
+
+dim(pcl_metadata2add)
+
+head(pcl_metadata2add)
+
+write_csv(pcl_metadata2add, file.path(outdir, pcl_gct_rdesc_metadata_savename))
+
+# ## Read KABX Pert ID list and check if LOOCV files exist
+
+kabx_pert_id_list = read.delim(unique_kabx_cmpds_tbl_path)
+
+if (demo_loocv) {
+    
+    if(demo_loocv_number_or_list == "number"){
+        
+        kabx_pert_id_list <- kabx_pert_id_list %>% 
+            mutate(
+                demo_loocv_cmpd = kabx_cmpd_idx <= demo_loocv_number_cmpds
+            )
+        
+    } else if(demo_loocv_number_or_list == "list"){
+        
+        kabx_pert_id_list <- kabx_pert_id_list %>% 
+            mutate(
+                demo_loocv_cmpd = kabx_cmpd %in% demo_loocv_list_cmpds
+            )
+        
+    } else {
+        print(sprintf("demo_loocv_number_or_list option not recognized: %s", demo_loocv_number_or_list))
+    }
+        
+    kabx_pert_id_list <- kabx_pert_id_list %>%
+        mutate(
+            expect_loocv_data = demo_loocv_cmpd
+        )
+    
+} else {
+    
+    kabx_pert_id_list <- kabx_pert_id_list %>%
+        mutate(
+            expect_loocv_data = TRUE
+        )
+    
+}
+
+head(kabx_pert_id_list)
+dim(kabx_pert_id_list)
+
+kabx_pert_id_list = kabx_pert_id_list %>%
+    group_by(kabx_cmpd) %>%
+    mutate(
+        
+        loocv_moa_corr_summary_path = file.path(wkdir, str_c(results_subdir_prefix, kabx_cmpd), '/verify_moas/figures_corr_summary.txt'),
+        
+        loocv_clusters_path = file.path(wkdir, str_c(results_subdir_prefix, kabx_cmpd), str_replace(outdir_name, "pcls", "clusters"), "clusters_spectral_clust.gmt"),
+        
+        loocv_pcl_path = file.path(wkdir, str_c(results_subdir_prefix, kabx_cmpd), outdir_name, pcls_filename),
+        
+        loocv_full_model_path = file.path(wkdir, str_c(results_subdir_prefix, kabx_cmpd), outdir_name, out_tbl_savename),
+        
+        loocv_cmpd_results_path = file.path(wkdir, str_c(results_subdir_prefix, kabx_cmpd), outdir_name, out_tbl_test_cmpd_savename),
+        
+        loocv_full_model_opt_score_tbl_path = file.path(wkdir, str_c(results_subdir_prefix, kabx_cmpd), outdir_name, opt_tbl_savename),
+        
+        moa_corr_summary_exist = file.exists(loocv_moa_corr_summary_path),
+        
+        clusters_exist = file.exists(loocv_clusters_path),
+        
+        pcls_exist = file.exists(loocv_pcl_path),
+        
+        full_model_exist = file.exists(loocv_full_model_path),
+        
+        loocv_cmpd_results_exist = file.exists(loocv_cmpd_results_path),
+        
+        loocv_full_model_opt_score_tbl_exist = file.exists(loocv_full_model_opt_score_tbl_path)
+    )
+
+kabx_pert_id_list %>%
+    ungroup() %>%
+    janitor::tabyl(moa_corr_summary_exist)
+
+kabx_pert_id_list %>%
+    ungroup() %>%
+    janitor::tabyl(clusters_exist)
+
+kabx_pert_id_list %>%
+    ungroup() %>%
+    janitor::tabyl(pcls_exist)
+
+kabx_pert_id_list %>%
+    ungroup() %>%
+    janitor::tabyl(full_model_exist)
+
+kabx_pert_id_list %>%
+    ungroup() %>%
+    janitor::tabyl(loocv_cmpd_results_exist)
+
+kabx_pert_id_list %>%
+    ungroup() %>%
+    janitor::tabyl(loocv_full_model_opt_score_tbl_exist)
+
+kabx_pert_id_list %>%
+    ungroup() %>%
+    janitor::tabyl(full_model_exist, loocv_cmpd_results_exist)
+
+kabx_pert_id_list %>%
+    filter(!moa_corr_summary_exist)
+
+kabx_pert_id_list %>%
+    filter(!clusters_exist)
+
+kabx_pert_id_list %>%
+    filter(!pcls_exist)
+
+kabx_pert_id_list %>%
+    filter(!full_model_exist | !loocv_cmpd_results_exist)
+
+kabx_pert_id_list %>%
+    filter(expect_loocv_data) %>%
+    ungroup() %>%
+    janitor::tabyl(moa_corr_summary_exist)
+
+kabx_pert_id_list %>%
+    filter(expect_loocv_data) %>%
+    ungroup() %>%
+    janitor::tabyl(clusters_exist)
+
+kabx_pert_id_list %>%
+    filter(expect_loocv_data) %>%
+    ungroup() %>%
+    janitor::tabyl(pcls_exist)
+
+kabx_pert_id_list %>%
+    filter(expect_loocv_data) %>%
+    ungroup() %>%
+    janitor::tabyl(full_model_exist)
+
+kabx_pert_id_list %>%
+    filter(expect_loocv_data) %>%
+    ungroup() %>%
+    janitor::tabyl(loocv_cmpd_results_exist)
+
+kabx_pert_id_list %>%
+    filter(expect_loocv_data) %>%
+    ungroup() %>%
+    janitor::tabyl(loocv_full_model_opt_score_tbl_exist)
+
+kabx_pert_id_list %>%
+    filter(expect_loocv_data) %>%
+    ungroup() %>%
+    janitor::tabyl(full_model_exist, loocv_cmpd_results_exist)
+
+missing_expected_loocv_cmpds <- kabx_pert_id_list %>% 
+    filter(expect_loocv_data & !full_model_exist)
+
+missing_expected_loocv_cmpds
+
+nrow(missing_expected_loocv_cmpds) == 0
+
+# ## Iterate through to read and combine LOOCV results
+
+kabx_pert_id_list <- kabx_pert_id_list %>%
+    mutate(
+        #loocv_full_model_n = NA_real_,
+        #loocv_full_model_optimal_ppv_threshold = NA_real_,
+        #loocv_full_model_tp = NA_real_,
+        #loocv_full_model_tpr = NA_real_,
+        #loocv_full_model_ppv = NA_real_,
+        #loocv_full_model_f1 = NA_real_,
+        
+        possible_pcl_matches_in_loocv = NA
+    )
+
+head(kabx_pert_id_list)
+
+dim(kabx_pert_id_list)
+
+kabx_pert_id_list_expect_loocv_data = kabx_pert_id_list %>%
+    filter(expect_loocv_data)
+
+dim(kabx_pert_id_list_expect_loocv_data)
+head(kabx_pert_id_list_expect_loocv_data)
+
+loocv_combined_results = data.frame()
+
+loocv_combined_opt_scores_tbls = data.frame()
+
+# ### Read in and combine LOOCV PCL high-confidence similarity score thresholds files
+
+### Combine PCL optimal score thresholds files and sizes in loop only
+
+for(i in 1:nrow(kabx_pert_id_list_expect_loocv_data)){
+    
+    if(i %% 100 == 0){
+        print(i)
+        flush.console()  # Force the output to be printed immediately
+    }
+    
+    this_loocv_cmpd = kabx_pert_id_list_expect_loocv_data$kabx_cmpd[i]
+    this_full_model_opt_scores_path = kabx_pert_id_list_expect_loocv_data$loocv_full_model_opt_score_tbl_path[i]
+    this_loocv_pcl_set_path = kabx_pert_id_list_expect_loocv_data$loocv_pcl_path[i]
+    
+    if(!kabx_pert_id_list_expect_loocv_data$pcls_exist[i] | !kabx_pert_id_list_expect_loocv_data$full_model_exist[i] | !kabx_pert_id_list_expect_loocv_data$loocv_cmpd_results_exist[i] | !kabx_pert_id_list_expect_loocv_data$loocv_full_model_opt_score_tbl_exist[i]){
+        print(str_c("Skipping: ", this_loocv_cmpd, " does not exist"))
+        next
+    }
+    
+    this_full_model_opt_scores_tbl = read.delim(this_full_model_opt_scores_path)
+
+    #dim(this_full_model_opt_scores_tbl)
+
+    this_full_model_opt_scores_tbl <- this_full_model_opt_scores_tbl %>%
+        mutate(
+            loocv_pert_id = this_loocv_cmpd,
+            .before = pcl_rid
+        ) %>%
+        group_by(pcl_rid) %>%
+        mutate(
+            pcl_f1_score = calc_f1(pcl_opt_ppv, pcl_opt_tpr)
+        ) %>%
+        rename(
+            pcl_ppv = pcl_opt_ppv,
+            pcl_tpr = pcl_opt_tpr,
+            pcl_fpr = pcl_opt_fpr,
+            pcl_next_score_moa = next_score_moa,
+            pcl_full_model_opt_score_thres = pcl_opt_similarity_score_threshold,
+            pcl_full_model_next_score_thres = full_model_next_score_thres,
+            pcl_full_model_next_score_ppv = full_model_next_score_ppv
+        )
+
+    #dim(this_full_model_opt_scores_tbl)
+    
+    this_loocv_pcl_set = cmapR::parse_gmt(this_loocv_pcl_set_path)
+
+    this_num_pcls = length(this_loocv_pcl_set)
+    
+    this_loocv_pcl_member_table = data.table::rbindlist(this_loocv_pcl_set, fill=TRUE) # Source: https://stackoverflow.com/questions/26177565/converting-nested-list-to-dataframe
+
+    #dim(this_loocv_pcl_member_table)
+    #head(this_loocv_pcl_member_table)
+
+    this_loocv_pcl_member_table = this_loocv_pcl_member_table %>% 
+        rename(
+            pcl_rid = head,
+            pcl_desc = desc,
+            cid = entry,
+            pcl_size = len
+        ) 
+    
+    this_loocv_pcl_member_table$broad_id <- sapply(strsplit(this_loocv_pcl_member_table$cid, ":"), function(x) x[2])
+
+    this_loocv_pcl_member_table <- this_loocv_pcl_member_table %>%
+        mutate(
+            pert_id = if_else(str_detect(broad_id, "BRD-"), str_sub(broad_id, 1, 13), broad_id)
+        ) 
+                                                   
+    this_loocv_pcl_member_table = this_loocv_pcl_member_table %>%
+    group_by(pcl_rid, pcl_desc, pcl_size) %>%
+    summarise(
+        pcl_num_pert_ids_unique = n_distinct(pert_id),
+        pcl_num_broad_ids_unique = n_distinct(broad_id),
+        pcl_pert_ids = paste0(unique(pert_id), collapse = "|"),
+        pcl_broad_ids = paste0(unique(broad_id), collapse = "|"),
+        pcl_cids = paste0(cid, collapse = "|"),
+        .groups = 'keep'
+    )
+
+    #dim(this_loocv_pcl_member_table)
+    #head(this_loocv_pcl_member_table)
+
+    if(this_num_pcls != nrow(this_loocv_pcl_member_table)){
+        error(str_c("this_num_pcls != nrow(this_loocv_pcl_member_table)", this_num_pcls, nrow(this_loocv_pcl_member_table), sep = ", "))
+    }
+    
+    #dim(this_full_model_opt_scores_tbl)
+
+    nrows_pre_join = nrow(this_full_model_opt_scores_tbl)
+
+    this_full_model_opt_scores_tbl <- inner_join(this_full_model_opt_scores_tbl, 
+                  this_loocv_pcl_member_table,
+                  by = c("pcl_rid", "pcl_desc")
+                 )
+
+    if(nrows_pre_join != nrow(this_full_model_opt_scores_tbl)){
+        error(str_c("nrows_pre_join != nrow(this_full_model_opt_scores_tbl)", nrows_pre_join, nrow(this_full_model_opt_scores_tbl), sep = ", "))
+    }
+
+    #dim(this_full_model_opt_scores_tbl)
+    
+    loocv_combined_opt_scores_tbls = bind_rows(loocv_combined_opt_scores_tbls, this_full_model_opt_scores_tbl)
+    
+}   
+
+dim(loocv_combined_opt_scores_tbls)
+head(loocv_combined_opt_scores_tbls)
+
+loocv_combined_opt_scores_tbls <- loocv_combined_opt_scores_tbls %>%
+    mutate(
+        pcl_from_single_cmpd_moa = pcl_n_correct == 1,
+        pcl_multi_cmpd = pcl_num_pert_ids_unique > 1,
+        pcl_multi_cmpd_or_single_cmpd_moa = pcl_multi_cmpd | pcl_from_single_cmpd_moa
+    )
+
+loocv_combined_opt_scores_tbls %>%
+    summarize(
+        n_distinct(loocv_pert_id)
+    )
+
+loocv_combined_opt_scores_tbls %>%
+    janitor::tabyl(pcl_from_single_cmpd_moa)
+
+loocv_combined_opt_scores_tbls %>%
+    janitor::tabyl(pcl_multi_cmpd)
+
+loocv_combined_opt_scores_tbls %>%
+    janitor::tabyl(pcl_multi_cmpd_or_single_cmpd_moa)
+
+gghistogram(loocv_combined_opt_scores_tbls, x = "pcl_size")
+
+gghistogram(loocv_combined_opt_scores_tbls, x = "pcl_num_pert_ids_unique")
+
+gghistogram(loocv_combined_opt_scores_tbls, x = "pcl_num_broad_ids_unique")
+
+gghistogram(loocv_combined_opt_scores_tbls, x = "pcl_auc")
+
+gghistogram(loocv_combined_opt_scores_tbls, x = "pcl_tpr")
+
+gghistogram(loocv_combined_opt_scores_tbls, x = "pcl_ppv")
+
+gghistogram(loocv_combined_opt_scores_tbls, x = "pcl_f1_score")
+
+saveRDS(loocv_combined_opt_scores_tbls, 
+        file.path(outdir, loocv_opt_tbl_combined_rds_savename))
+
+# ### Read in and combine LOOCV results
+
+### Combine LOOCV results in loop only
+
+for(i in 1:nrow(kabx_pert_id_list_expect_loocv_data)){
+    
+    if(i %% 100 == 0){
+        print(i)
+        flush.console()  # Force the output to be printed immediately
+    }
+    
+    this_loocv_cmpd = kabx_pert_id_list_expect_loocv_data$kabx_cmpd[i]
+    this_full_model_path = kabx_pert_id_list_expect_loocv_data$loocv_full_model_path[i]
+    this_loocv_cmpd_results_path = kabx_pert_id_list_expect_loocv_data$loocv_cmpd_results_path[i]
+    
+    if(!kabx_pert_id_list_expect_loocv_data$pcls_exist[i] | !kabx_pert_id_list_expect_loocv_data$full_model_exist[i] | !kabx_pert_id_list_expect_loocv_data$loocv_cmpd_results_exist[i]){
+        print(str_c("Skipping: ", this_loocv_cmpd, " does not exist"))
+        next
+    }
+    
+    this_loocv_cmpd_results = read.delim(this_loocv_cmpd_results_path)
+
+    dim(this_loocv_cmpd_results)
+
+    check_loocv_results_only_loocv_cmpd = all(this_loocv_cmpd == this_loocv_cmpd_results$pert_id)
+    check_if_possible_pcl_matches_for_loocv_cmpd = any(this_loocv_cmpd_results$pcl_and_moa_agree == 1)
+
+    if(!check_loocv_results_only_loocv_cmpd ){
+        stop(str_c(this_loocv_cmpd, " is not only compound in its loocv results"))
+    }
+
+    kabx_pert_id_list_expect_loocv_data$possible_pcl_matches_in_loocv[i] = check_if_possible_pcl_matches_for_loocv_cmpd
+
+    loocv_combined_results = bind_rows(loocv_combined_results, this_loocv_cmpd_results)
+    
+}
+
+dim(loocv_combined_results)
+head(loocv_combined_results)
+
+saveRDS(loocv_combined_results, 
+        file.path(outdir, loocv_test_cmpd_results_combined_rds_savename))
+
+# ## Summarize compound activity, if well-represented in KABX based on full dataset PCL membership info, and if validatable in LOOCV (from an annotated MOA with more than 1 compound)
+
+# Read-in compound activity, full dataset PCL membership info, and if validatable in LOOCV (more than 1 compound MOA)
+
+# ### Read-in col_meta_kabx_for_pcls file to identify compounds whose annotated MOAs are only represented by themselves (a single compound) and therefore can't be predicted accurately in LOOCV
+
+col_meta_kabx_for_pcls_tbl = read.delim(col_meta_kabx_for_pcls_path)
+
+dim(col_meta_kabx_for_pcls_tbl)
+head(col_meta_kabx_for_pcls_tbl)
+
+pcl_moa_num_kabx_cmpds_tbl <- col_meta_kabx_for_pcls_tbl %>%
+    group_by(pcl_desc) %>%
+    summarize(
+        num_cmpds_with_annotated_moa = n_distinct(pert_id),
+        pcl_moa_validatable_in_loocv = num_cmpds_with_annotated_moa > 1
+    ) %>% ungroup()
+
+pcl_moa_num_kabx_cmpds_tbl
+
+pcl_moas_more_than_one_cmpd <- pcl_moa_num_kabx_cmpds_tbl %>%
+    filter(num_cmpds_with_annotated_moa > 1) %>% pull(pcl_desc)
+
+pcl_moas_single_cmpd <- pcl_moa_num_kabx_cmpds_tbl %>%
+    filter(num_cmpds_with_annotated_moa == 1) %>% pull(pcl_desc)
+
+length(pcl_moas_more_than_one_cmpd)
+length(pcl_moas_single_cmpd)
+
+dim(col_meta_kabx_for_pcls_tbl)
+
+col_meta_kabx_for_pcls_tbl <- inner_join(col_meta_kabx_for_pcls_tbl,
+           pcl_moa_num_kabx_cmpds_tbl)
+
+dim(col_meta_kabx_for_pcls_tbl)
+head(col_meta_kabx_for_pcls_tbl)
+
+dim(col_meta_kabx_for_pcls_tbl)
+
+col_meta_kabx_for_pcls_tbl <- col_meta_kabx_for_pcls_tbl %>%
+    group_by(pert_id) %>%
+    mutate(
+        cmpd_from_validatable_moa = any(pcl_moa_validatable_in_loocv)
+    ) %>%
+    ungroup()
+
+dim(col_meta_kabx_for_pcls_tbl)
+head(col_meta_kabx_for_pcls_tbl)
+
+names(col_meta_kabx_for_pcls_tbl)
+
+col_meta_kabx_for_pcls_tbl %>%
+    group_by(cmpd_from_validatable_moa) %>%
+    summarize(
+        n_distinct(pert_id)
+    ) %>% 
+    janitor::adorn_totals()
+
+col_meta_kabx_for_pcls_tbl %>%
+    filter(!cmpd_from_validatable_moa) %>%
+    select(pert_id, pert_iname, target_description:target_process, pcl_desc) %>%
+    distinct() %>%
+    arrange(target_process, target_pathway, target_description)
+
+# ### Read-in compound activity (minimum strain curve-fit GR) RDS files at top concentration tested as well as at each concentration tested
+
+any_dose_gr_tbl = readRDS(any_dose_gr_path)
+
+dim(any_dose_gr_tbl)
+head(any_dose_gr_tbl)
+
+names(any_dose_gr_tbl)
+
+max_dose_gr_tbl = readRDS(max_dose_gr_path)
+
+dim(max_dose_gr_tbl)
+head(max_dose_gr_tbl)
+
+names(max_dose_gr_tbl)
+
+any_dose_gr_tbl %>%
+    filter(pert_id %in% kabx_pert_id_list$kabx_cmpd) %>%
+    group_by(pert_id) %>%
+    mutate(
+        num_cids = n(),
+        #highest_doses = paste0(signif(pert_dose, 3), collapse = '|'),
+        min_gr_at_any_dose = min(min_gr, na.rm = TRUE),
+        pert_id_only_weak_active_0.3_fit_gr_any_dose = min_gr_at_any_dose > 0.3,
+        cid_is_min_gr_at_any_dose_dose = min_gr == min_gr_at_any_dose
+    ) %>%
+    filter(cid_is_min_gr_at_any_dose_dose) %>%
+    select(
+        cid, 
+        pert_id,
+        num_cids, 
+        min_gr_at_any_dose,
+        pert_id_only_weak_active_0.3_fit_gr_any_dose,
+        cid_is_min_gr_at_any_dose_dose
+    )
+
+summ_pert_id_activity_any_dose = any_dose_gr_tbl %>%
+    filter(pert_id %in% kabx_pert_id_list$kabx_cmpd) %>%
+    group_by(pert_id) %>%
+    summarise(
+        num_cids = n(),
+        #highest_doses = paste0(signif(pert_dose, 3), collapse = '|'),
+        min_gr_at_any_dose = min(min_gr, na.rm = TRUE),
+        pert_id_only_weak_active_0.3_fit_gr_any_dose = min_gr_at_any_dose > 0.3,
+    ) #%>% arrange(desc(min_gr_at_highest_doses))
+
+#summ_pert_id_activity_any_dose %>% janitor::tabyl(cmpd_from_validatable_moa)
+
+summ_pert_id_activity_any_dose %>% janitor::tabyl(pert_id_only_weak_active_0.3_fit_gr_any_dose)
+
+#summ_pert_id_activity_any_dose %>% janitor::tabyl(cmpd_from_validatable_moa, pert_id_only_weak_active_0.3_fit_gr)
+
+dim(max_dose_gr_tbl)
+
+max_dose_gr_tbl <- left_join(max_dose_gr_tbl,
+          col_meta_kabx_for_pcls_tbl %>%
+              select(pert_id, cmpd_from_validatable_moa) %>% distinct())
+
+dim(max_dose_gr_tbl)
+head(max_dose_gr_tbl, 20)
+
+summ_pert_id_activity = max_dose_gr_tbl %>%
+    #filter(pert_id %in% kabx_pert_id_list$kabx_cmpd) %>%
+    group_by(pert_id, cmpd_from_validatable_moa) %>%
+    mutate(
+        num_proj_broad_id = n(),
+        highest_doses = paste0(signif(pert_dose, 3), collapse = '|'),
+        min_gr_at_highest_doses = min(min_gr, na.rm = TRUE),
+        pert_id_only_weak_active_0.3_fit_gr = min_gr_at_highest_doses > 0.3,
+        cid_is_min_gr_at_highest_doses_dose = min_gr == min_gr_at_highest_doses
+    ) %>%
+    filter(cid_is_min_gr_at_highest_doses_dose) %>%
+    mutate(
+        cid_with_min_gr_at_highest_dose = cid
+    ) %>%
+    select(
+        cid_with_min_gr_at_highest_dose, 
+        pert_id, cmpd_from_validatable_moa, 
+        num_proj_broad_id, highest_doses, 
+        min_gr_at_highest_doses,
+        pert_id_only_weak_active_0.3_fit_gr#, cid_is_min_gr_at_highest_doses_dose
+    )
+
+summ_pert_id_activity %>%
+    janitor::tabyl(cmpd_from_validatable_moa)
+
+summ_pert_id_activity %>%
+    janitor::tabyl(pert_id_only_weak_active_0.3_fit_gr)
+
+summ_pert_id_activity %>%
+    janitor::tabyl(cmpd_from_validatable_moa, pert_id_only_weak_active_0.3_fit_gr)
+
+summ_pert_id_activity
+
+left_join(summ_pert_id_activity,
+          summ_pert_id_activity_any_dose) %>%
+    mutate(
+        min_gr_any_and_highest_match = min_gr_at_highest_doses == min_gr_at_any_dose
+    ) %>%
+    arrange(min_gr_any_and_highest_match)
+
+# ### Read-in full dataset PCL members table
+
+pcl_members_table = read_csv(file.path(outdir, pcl_members_tbl_savename))
+
+dim(pcl_members_table)
+head(pcl_members_table)
+
+pcl_members_table <- pcl_members_table %>%
+    #filter(pcl_cluster_size > 1)
+    filter(pcl_used_in_scoring_and_training)
+
+dim(pcl_members_table)
+
+pcl_members_table %>%
+    summarize(
+        n_distinct(rid), 
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+names(pcl_members_table)
+
+pcl_members_table %>%
+    select(rid, pcl_size) %>% distinct() %>%
+    summarise(
+        min_pcl_size = min(pcl_size),
+        median_pcl_size = median(pcl_size),
+        max_pcl_size = max(pcl_size)
+    )
+
+pcl_members_table %>%
+    filter(pcl_num_pert_ids_unique > 1) %>%
+    summarize(
+        n_distinct(rid), 
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+pert_ids_in_multi_cmpd_pcl = pcl_members_table %>%
+    filter(pcl_num_pert_ids_unique > 1) %>%
+    pull(pert_id) %>% unique()
+
+length(pert_ids_in_multi_cmpd_pcl)
+
+head(summ_pert_id_activity)
+
+summ_pert_id_activity <- summ_pert_id_activity %>%
+    mutate(
+        pert_id_in_multi_cmpd_pcl = pert_id %in% pert_ids_in_multi_cmpd_pcl
+    )
+
+head(summ_pert_id_activity)
+
+summ_pert_id_activity %>%
+    janitor::tabyl(cmpd_from_validatable_moa, pert_id_in_multi_cmpd_pcl)
+
+summ_pert_id_activity %>%
+    janitor::tabyl(pert_id_only_weak_active_0.3_fit_gr, pert_id_in_multi_cmpd_pcl)
+
+# ## Assess accuracy of PCL-based MOA Predictions on KABX compounds in full model (fit to data/training) and in LOOCV
+
+# ### Full model
+
+full_model <- pcl_similarity_to_confidence_score_tbl
+
+dim(full_model)
+head(full_model)
+
+dim(full_model)
+
+dim(inner_join(full_model, summ_pert_id_activity, by = 'pert_id'))
+
+full_model = inner_join(full_model, summ_pert_id_activity, by = 'pert_id')
+
+dim(full_model)
+head(full_model)
+
+print("All KABX compounds")
+full_model %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("In multi-compound MOA")
+full_model %>%
+    filter(cmpd_from_validatable_moa) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("In multi-compound MOA and active")
+full_model %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("In multi-compound MOA, active, and well-represented in KABX")
+full_model %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+# #### All KABX - pert_id
+
+full_model_kabx_preds = full_model %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- full_model_kabx_preds$pcl_similarity_score
+actual <- full_model_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    full_model_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- full_model_kabx_preds$pcl_confidence_score
+actual <- full_model_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    full_model_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+
+full_model_kabx_preds_results_n = nrow(full_model_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+full_model_kabx_preds_results_tp = sum(full_model_kabx_preds$pcl_and_moa_agree == 1 & full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_fp = sum(full_model_kabx_preds$pcl_and_moa_agree == 0 & full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_tpr = full_model_kabx_preds_results_tp / full_model_kabx_preds_results_n
+full_model_kabx_preds_results_fpr = full_model_kabx_preds_results_fp / full_model_kabx_preds_results_n
+full_model_kabx_preds_results_ppv = full_model_kabx_preds_results_tp / sum(full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_f1 = calc_f1(full_model_kabx_preds_results_ppv, full_model_kabx_preds_results_tpr)
+full_model_kabx_preds_results_fns = sum(full_model_kabx_preds$pcl_and_moa_agree == 1 & full_model_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_ns = sum(full_model_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("Full model accuracy on all KABX compounds (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", full_model_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", full_model_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", full_model_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", full_model_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(full_model_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(full_model_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(full_model_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(full_model_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### All KABX - broad_id
+
+full_model_kabx_preds = full_model %>%
+    group_by(broad_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(broad_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(broad_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- full_model_kabx_preds$pcl_similarity_score
+actual <- full_model_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    full_model_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- full_model_kabx_preds$pcl_confidence_score
+actual <- full_model_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    full_model_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+
+full_model_kabx_preds_results_n = nrow(full_model_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+full_model_kabx_preds_results_tp = sum(full_model_kabx_preds$pcl_and_moa_agree == 1 & full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_fp = sum(full_model_kabx_preds$pcl_and_moa_agree == 0 & full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_tpr = full_model_kabx_preds_results_tp / full_model_kabx_preds_results_n
+full_model_kabx_preds_results_fpr = full_model_kabx_preds_results_fp / full_model_kabx_preds_results_n
+full_model_kabx_preds_results_ppv = full_model_kabx_preds_results_tp / sum(full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_f1 = calc_f1(full_model_kabx_preds_results_ppv, full_model_kabx_preds_results_tpr)
+full_model_kabx_preds_results_fns = sum(full_model_kabx_preds$pcl_and_moa_agree == 1 & full_model_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_ns = sum(full_model_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("Full model accuracy on all batches of KABX compounds (broad_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", full_model_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", full_model_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", full_model_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", full_model_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(full_model_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(full_model_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(full_model_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(full_model_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### All KABX - proj_broad_id
+
+full_model_kabx_preds = full_model %>%
+    group_by(proj_broad_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(proj_broad_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(proj_broad_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- full_model_kabx_preds$pcl_similarity_score
+actual <- full_model_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    full_model_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- full_model_kabx_preds$pcl_confidence_score
+actual <- full_model_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    full_model_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+
+full_model_kabx_preds_results_n = nrow(full_model_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+full_model_kabx_preds_results_tp = sum(full_model_kabx_preds$pcl_and_moa_agree == 1 & full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_fp = sum(full_model_kabx_preds$pcl_and_moa_agree == 0 & full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_tpr = full_model_kabx_preds_results_tp / full_model_kabx_preds_results_n
+full_model_kabx_preds_results_fpr = full_model_kabx_preds_results_fp / full_model_kabx_preds_results_n
+full_model_kabx_preds_results_ppv = full_model_kabx_preds_results_tp / sum(full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_f1 = calc_f1(full_model_kabx_preds_results_ppv, full_model_kabx_preds_results_tpr)
+full_model_kabx_preds_results_fns = sum(full_model_kabx_preds$pcl_and_moa_agree == 1 & full_model_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_ns = sum(full_model_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("Full model accuracy on all screening wave instances of batches of KABX compounds (proj_broad_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", full_model_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", full_model_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", full_model_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", full_model_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(full_model_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(full_model_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(full_model_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(full_model_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### All KABX - treatment/dsCGI profiles (cid)
+
+full_model_kabx_preds = full_model %>%
+    group_by(cid) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(cid, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(cid) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- full_model_kabx_preds$pcl_similarity_score
+actual <- full_model_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    full_model_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- full_model_kabx_preds$pcl_confidence_score
+actual <- full_model_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    full_model_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+
+full_model_kabx_preds_results_n = nrow(full_model_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+full_model_kabx_preds_results_tp = sum(full_model_kabx_preds$pcl_and_moa_agree == 1 & full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_fp = sum(full_model_kabx_preds$pcl_and_moa_agree == 0 & full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_tpr = full_model_kabx_preds_results_tp / full_model_kabx_preds_results_n
+full_model_kabx_preds_results_fpr = full_model_kabx_preds_results_fp / full_model_kabx_preds_results_n
+full_model_kabx_preds_results_ppv = full_model_kabx_preds_results_tp / sum(full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_f1 = calc_f1(full_model_kabx_preds_results_ppv, full_model_kabx_preds_results_tpr)
+full_model_kabx_preds_results_fns = sum(full_model_kabx_preds$pcl_and_moa_agree == 1 & full_model_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_ns = sum(full_model_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("Full model accuracy on all KABX treatments/dsCGI profiles (cid)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", full_model_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", full_model_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", full_model_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", full_model_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(full_model_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(full_model_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(full_model_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(full_model_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### All KABX - all treatment/dsCGI profile-PCL pairs
+
+full_model_kabx_preds = full_model
+
+### ROC for PCL similarity score
+
+predicted <- full_model_kabx_preds$pcl_similarity_score
+actual <- full_model_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    full_model_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- full_model_kabx_preds$pcl_confidence_score
+actual <- full_model_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    full_model_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+
+full_model_kabx_preds_results_n = nrow(full_model_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+full_model_kabx_preds_results_tp = sum(full_model_kabx_preds$pcl_and_moa_agree == 1 & full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_fp = sum(full_model_kabx_preds$pcl_and_moa_agree == 0 & full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_tpr = full_model_kabx_preds_results_tp / full_model_kabx_preds_results_n
+full_model_kabx_preds_results_fpr = full_model_kabx_preds_results_fp / full_model_kabx_preds_results_n
+full_model_kabx_preds_results_ppv = full_model_kabx_preds_results_tp / sum(full_model_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_f1 = calc_f1(full_model_kabx_preds_results_ppv, full_model_kabx_preds_results_tpr)
+full_model_kabx_preds_results_fns = sum(full_model_kabx_preds$pcl_and_moa_agree == 1 & full_model_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+full_model_kabx_preds_results_ns = sum(full_model_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("Full model accuracy on all KABX treatments/dsCGI profiles (cid)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", full_model_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", full_model_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", full_model_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", full_model_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(full_model_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(full_model_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(full_model_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(full_model_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# ### Processed LOOCV results for KABX (demo)
+
+loocv_combined_results <- readRDS(file.path(outdir, loocv_test_cmpd_results_combined_rds_savename))
+
+dim(loocv_combined_results)
+head(loocv_combined_results)
+
+dim(loocv_combined_results)
+
+dim(inner_join(loocv_combined_results, summ_pert_id_activity, by = 'pert_id'))
+
+loocv_combined_results = inner_join(loocv_combined_results, summ_pert_id_activity, by = 'pert_id')
+
+dim(loocv_combined_results)
+head(loocv_combined_results)
+
+print("All KABX compounds")
+loocv_combined_results %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("In multi-compound MOA")
+loocv_combined_results %>%
+    filter(cmpd_from_validatable_moa) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("In multi-compound MOA and active")
+loocv_combined_results %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("In multi-compound MOA, active, and well-represented in KABX")
+loocv_combined_results %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+dim(inner_join(loocv_combined_results, 
+               loocv_combined_opt_scores_tbls,
+               by = c("pert_id" = "loocv_pert_id",
+                      "rid" = "pcl_rid",
+                      "pcl_desc" = "pcl_desc")
+              ))
+
+loocv_combined_results <-inner_join(loocv_combined_results, 
+               loocv_combined_opt_scores_tbls,
+               by = c("pert_id" = "loocv_pert_id",
+                      "rid" = "pcl_rid",
+                      "pcl_desc" = "pcl_desc")
+              )
+
+dim(loocv_combined_results)
+head(loocv_combined_results)
+
+loocv_combined_results %>%
+    group_by(pert_id) %>%
+    mutate(
+        has_matching_pcl = any(pcl_and_moa_agree == 1)
+    ) %>% select(pert_id, has_matching_pcl) %>% distinct() %>%
+    ungroup() %>%
+    janitor::tabyl(has_matching_pcl)
+
+pert_ids_with_matching_pcl = loocv_combined_results %>%
+    group_by(pert_id) %>%
+    mutate(
+        has_matching_pcl = any(pcl_and_moa_agree == 1)
+    ) %>% filter(has_matching_pcl) %>% pull(pert_id) %>% unique()
+
+length(pert_ids_with_matching_pcl)
+
+loocv_combined_results %>%
+    filter(pcl_and_moa_agree == 1 & pcl_confidence_score >= 1) %>%
+    summarise(
+        n_distinct(pert_id)
+        )
+
+loocv_combined_results %>%
+    filter(pcl_and_moa_agree == 1 & pcl_confidence_score >= 0.9) %>%
+    summarise(
+        n_distinct(pert_id)
+        )
+
+loocv_combined_results %>%
+    filter(pcl_and_moa_agree == 1 & pcl_confidence_score >= 0.8) %>%
+    summarise(
+        n_distinct(pert_id)
+        )
+
+loocv_combined_results %>%
+    filter(pcl_and_moa_agree == 1 & pcl_confidence_score >= 0.5) %>%
+    summarise(
+        n_distinct(pert_id)
+        )
+
+# #### All KABX - pert_id
+
+loocv_kabx_preds = loocv_combined_results %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on all KABX compounds (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs - pert_id
+
+loocv_kabx_preds = loocv_combined_results %>%
+    filter(cmpd_from_validatable_moa) %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs and active - active if minimum, strain curve-fit GR <= 0.3 at highest tested concentrations - pert_id 
+
+loocv_kabx_preds = loocv_combined_results %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr) %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs and active (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs but inactive - inactive if minimum, strain curve-fit GR > 0.3 at highest tested concentrations - pert_id
+
+loocv_kabx_preds = loocv_combined_results %>%
+    filter(cmpd_from_validatable_moa & pert_id_only_weak_active_0.3_fit_gr) %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs but inactive (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs, active, and well-represented in KABX - active if minimum, strain curve-fit GR <= 0.3 at highest tested concentrations and well-represented if in multi-compound PCL in full model - pert_id
+
+loocv_kabx_preds = loocv_combined_results %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl) %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs, active, and well-represented in KABX (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOA but inactive and/or not well-represented in KABX - inactive if minimum, strain curve-fit GR > 0.3 at highest tested concentrations and not well-represented if not in PCL or in single-compound PCL only in full model - pert_id
+
+loocv_kabx_preds = loocv_combined_results %>%
+    filter(cmpd_from_validatable_moa & (pert_id_only_weak_active_0.3_fit_gr | !pert_id_in_multi_cmpd_pcl)) %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs but inactive or not well-represented in KABX (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs, active, and well-represented in KABX - broad_id
+
+loocv_kabx_preds = loocv_combined_results %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl) %>%
+    group_by(broad_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(broad_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(broad_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs, active, and well-represented in KABX at batch level (broad_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs, active, and well-represented in KABX - proj_broad_id
+
+loocv_kabx_preds = loocv_combined_results %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl) %>%
+    group_by(proj_broad_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(proj_broad_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(proj_broad_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs, active, and well-represented in KABX at screening wave x batch level (proj_broad_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs, active, and well-represented in KABX - treatment/dsCGI profile (cid)
+
+loocv_kabx_preds = loocv_combined_results %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl) %>%
+    group_by(cid) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(cid, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(cid) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs, active, and well-represented in KABX at treatment/dsCGI profile level (cid)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### All KABX - all treatment/dsCGI profile-PCL pairs
+
+loocv_kabx_preds = loocv_combined_results
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs, active, and well-represented in KABX at treatment/dsCGI profile level (cid)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs, active, and well-represented in KABX - all treatment/dsCGI profile-PCL pairs
+
+loocv_kabx_preds = loocv_combined_results %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs, active, and well-represented in KABX at treatment/dsCGI profile level (cid)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### Check accuracy using single, optimal PCL similarity score threshold for all PCLs/MOAs and MOA prediction made as PCL with highest similarity score to compound (as opposed to highest confidence score)
+
+loocv_kabx_preds = loocv_combined_results %>%
+    group_by(pert_id) %>%
+    arrange(desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+
+}
+### End ROC for PCL similarity score
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_similarity_score_threshold = loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold
+
+print(str_c("Defined high-confidence PCL similarity score threshold is: ", high_confidence_pcl_similarity_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_similarity_score >= high_confidence_pcl_similarity_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_similarity_score >= high_confidence_pcl_similarity_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_similarity_score >= high_confidence_pcl_similarity_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_similarity_score < high_confidence_pcl_similarity_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_similarity_score < high_confidence_pcl_similarity_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL similarity score threshold of %f to assign MOA', high_confidence_pcl_similarity_score_threshold))
+print("LOOCV accuracy on all KABX compounds using single PCL similarity score threshold (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_vline(xintercept = high_confidence_pcl_similarity_score_threshold, linetype = "dashed")
+
+# ### Full LOOCV results for KABX (full, shared results)
+
+if (exists("loocv_combined_opt_scores_tbls_full_shared")) {
+    print("The loocv_combined_opt_scores_tbls_full_shared object is loaded.")
+} else {
+    print("Loading loocv_combined_opt_scores_tbls_full_shared object now: ")
+  
+    loocv_combined_opt_scores_tbls_full_shared <- readRDS(loocv_opt_tbl_combined_rds_full_shared_path)
+  
+}
+
+dim(loocv_combined_opt_scores_tbls_full_shared)
+head(loocv_combined_opt_scores_tbls_full_shared)
+
+loocv_combined_results_full_shared <- readRDS(loocv_test_cmpd_results_combined_rds_full_shared_path)
+
+dim(loocv_combined_results_full_shared)
+head(loocv_combined_results_full_shared)
+
+if("pcl_score" %in% names(loocv_combined_results_full_shared)){
+    loocv_combined_results_full_shared <- loocv_combined_results_full_shared %>%
+        rename("pcl_similarity_score" = "pcl_score")
+}
+
+if("leftout_ppv" %in% names(loocv_combined_results_full_shared)){
+    loocv_combined_results_full_shared <- loocv_combined_results_full_shared %>%
+        rename("pcl_confidence_score" = "leftout_ppv")
+}
+
+dim(loocv_combined_results_full_shared)
+head(loocv_combined_results_full_shared)
+
+dim(loocv_combined_results_full_shared)
+
+dim(inner_join(loocv_combined_results_full_shared, summ_pert_id_activity, by = 'pert_id'))
+
+loocv_combined_results_full_shared = inner_join(loocv_combined_results_full_shared, summ_pert_id_activity, by = 'pert_id')
+
+dim(loocv_combined_results_full_shared)
+head(loocv_combined_results_full_shared)
+
+print("All KABX compounds")
+loocv_combined_results_full_shared %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("In multi-compound MOA")
+loocv_combined_results_full_shared %>%
+    filter(cmpd_from_validatable_moa) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("In multi-compound MOA and active")
+loocv_combined_results_full_shared %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("In multi-compound MOA, active, and well-represented in KABX")
+loocv_combined_results_full_shared %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+# dim(inner_join(loocv_combined_results_full_shared, 
+
+#                loocv_combined_opt_scores_tbls_full_shared,
+
+#                by = c("pert_id" = "loocv_pert_id",
+
+#                       "rid" = "pcl_rid",
+
+#                       "pcl_desc" = "pcl_desc")
+
+#               ))
+
+# 
+
+# loocv_combined_results_full_shared <-inner_join(loocv_combined_results_full_shared, 
+
+#                loocv_combined_opt_scores_tbls_full_shared,
+
+#                by = c("pert_id" = "loocv_pert_id",
+
+#                       "rid" = "pcl_rid",
+
+#                       "pcl_desc" = "pcl_desc")
+
+#               )
+
+# 
+
+# dim(loocv_combined_results_full_shared)
+
+# head(loocv_combined_results_full_shared)
+
+loocv_combined_results_full_shared %>%
+    group_by(pert_id) %>%
+    mutate(
+        has_matching_pcl = any(pcl_and_moa_agree == 1)
+    ) %>% select(pert_id, has_matching_pcl) %>% distinct() %>%
+    ungroup() %>%
+    janitor::tabyl(has_matching_pcl)
+
+pert_ids_with_matching_pcl = loocv_combined_results_full_shared %>%
+    group_by(pert_id) %>%
+    mutate(
+        has_matching_pcl = any(pcl_and_moa_agree == 1)
+    ) %>% filter(has_matching_pcl) %>% pull(pert_id) %>% unique()
+
+length(pert_ids_with_matching_pcl)
+
+loocv_combined_results_full_shared %>%
+    filter(pcl_and_moa_agree == 1 & pcl_confidence_score >= 1) %>%
+    summarise(
+        n_distinct(pert_id)
+        )
+
+loocv_combined_results_full_shared %>%
+    filter(pcl_and_moa_agree == 1 & pcl_confidence_score >= 0.9) %>%
+    summarise(
+        n_distinct(pert_id)
+        )
+
+loocv_combined_results_full_shared %>%
+    filter(pcl_and_moa_agree == 1 & pcl_confidence_score >= 0.8) %>%
+    summarise(
+        n_distinct(pert_id)
+        )
+
+loocv_combined_results_full_shared %>%
+    filter(pcl_and_moa_agree == 1 & pcl_confidence_score >= 0.5) %>%
+    summarise(
+        n_distinct(pert_id)
+        )
+
+# #### All KABX - pert_id
+
+loocv_kabx_preds = loocv_combined_results_full_shared %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on all KABX compounds (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs - pert_id
+
+loocv_kabx_preds = loocv_combined_results_full_shared %>%
+    filter(cmpd_from_validatable_moa) %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs and active - active if minimum, strain curve-fit GR <= 0.3 at highest tested concentrations - pert_id 
+
+loocv_kabx_preds = loocv_combined_results_full_shared %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr) %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs and active (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs but inactive - inactive if minimum, strain curve-fit GR > 0.3 at highest tested concentrations - pert_id
+
+loocv_kabx_preds = loocv_combined_results_full_shared %>%
+    filter(cmpd_from_validatable_moa & pert_id_only_weak_active_0.3_fit_gr) %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs but inactive (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs, active, and well-represented in KABX - active if minimum, strain curve-fit GR <= 0.3 at highest tested concentrations and well-represented if in multi-compound PCL in full model - pert_id
+
+loocv_kabx_preds = loocv_combined_results_full_shared %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl) %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs, active, and well-represented in KABX (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOA but inactive and/or not well-represented in KABX - inactive if minimum, strain curve-fit GR > 0.3 at highest tested concentrations and not well-represented if not in PCL or in single-compound PCL only in full model - pert_id
+
+loocv_kabx_preds = loocv_combined_results_full_shared %>%
+    filter(cmpd_from_validatable_moa & (pert_id_only_weak_active_0.3_fit_gr | !pert_id_in_multi_cmpd_pcl)) %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs but inactive or not well-represented in KABX (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs, active, and well-represented in KABX - broad_id
+
+loocv_kabx_preds = loocv_combined_results_full_shared %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl) %>%
+    group_by(broad_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(broad_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(broad_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs, active, and well-represented in KABX at batch level (broad_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs, active, and well-represented in KABX - proj_broad_id
+
+loocv_kabx_preds = loocv_combined_results_full_shared %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl) %>%
+    group_by(proj_broad_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(proj_broad_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(proj_broad_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs, active, and well-represented in KABX at screening wave x batch level (proj_broad_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs, active, and well-represented in KABX - treatment/dsCGI profile (cid)
+
+loocv_kabx_preds = loocv_combined_results_full_shared %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl) %>%
+    group_by(cid) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(cid, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(cid) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs, active, and well-represented in KABX at treatment/dsCGI profile level (cid)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### All KABX - all treatment/dsCGI profile-PCL pairs
+
+loocv_kabx_preds = loocv_combined_results_full_shared
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs, active, and well-represented in KABX at treatment/dsCGI profile level (cid)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### KABX in multi-compound MOAs, active, and well-represented in KABX - all treatment/dsCGI profile-PCL pairs
+
+loocv_kabx_preds = loocv_combined_results_full_shared %>%
+    filter(cmpd_from_validatable_moa & !pert_id_only_weak_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+    
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+}
+### End ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_confidence_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_confidence_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL confidence score threshold is: ", optimal_pcl_confidence_score))
+
+    loocv_kabx_preds_results_optimal_pcl_confidence_score_threshold = optimal_pcl_confidence_score
+}
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_confidence_score_threshold = 1
+
+print(str_c("Defined high-confidence PCL confidence score threshold is: ", high_confidence_pcl_confidence_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_confidence_score >= high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_confidence_score < high_confidence_pcl_confidence_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL confidence score threshold of %d to assign MOA', high_confidence_pcl_confidence_score_threshold))
+print("LOOCV accuracy on KABX compounds in multi-compound MOAs, active, and well-represented in KABX at treatment/dsCGI profile level (cid)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL confidence score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_hline(yintercept = high_confidence_pcl_confidence_score_threshold, linetype = "dashed")
+
+# #### Check accuracy using single, optimal PCL similarity score threshold for all PCLs/MOAs and MOA prediction made as PCL with highest similarity score to compound (as opposed to highest confidence score)
+
+loocv_kabx_preds = loocv_combined_results_full_shared %>%
+    group_by(pert_id) %>%
+    arrange(desc(pcl_similarity_score), .by_group = TRUE) %>%
+    slice(1)
+
+### ROC for PCL similarity score
+
+predicted <- loocv_kabx_preds$pcl_similarity_score
+actual <- loocv_kabx_preds$pcl_and_moa_agree
+
+
+if (!(all(actual) == 1)){
+
+    # Calculate the ROC curve and AUC
+    rocData <- roc(actual, predicted)
+    auc <- auc(rocData)
+
+    coords(rocData, "best")
+
+
+    optimal_pcl_similarity_score = coords(rocData, "best") %>% pull(threshold)
+
+    print(str_c("Optimal PCL similarity score threshold is: ", optimal_pcl_similarity_score))
+
+    loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold = optimal_pcl_similarity_score
+
+}
+### End ROC for PCL similarity score
+    
+loocv_kabx_preds_results_n = nrow(loocv_kabx_preds)
+
+high_confidence_pcl_similarity_score_threshold = loocv_kabx_preds_results_optimal_pcl_similarity_score_threshold
+
+print(str_c("Defined high-confidence PCL similarity score threshold is: ", high_confidence_pcl_similarity_score_threshold))
+
+loocv_kabx_preds_results_tp = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_similarity_score >= high_confidence_pcl_similarity_score_threshold)
+loocv_kabx_preds_results_fp = sum(loocv_kabx_preds$pcl_and_moa_agree == 0 & loocv_kabx_preds$pcl_similarity_score >= high_confidence_pcl_similarity_score_threshold)
+loocv_kabx_preds_results_tpr = loocv_kabx_preds_results_tp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_fpr = loocv_kabx_preds_results_fp / loocv_kabx_preds_results_n
+loocv_kabx_preds_results_ppv = loocv_kabx_preds_results_tp / sum(loocv_kabx_preds$pcl_similarity_score >= high_confidence_pcl_similarity_score_threshold)
+loocv_kabx_preds_results_f1 = calc_f1(loocv_kabx_preds_results_ppv, loocv_kabx_preds_results_tpr)
+loocv_kabx_preds_results_fns = sum(loocv_kabx_preds$pcl_and_moa_agree == 1 & loocv_kabx_preds$pcl_similarity_score < high_confidence_pcl_similarity_score_threshold)
+loocv_kabx_preds_results_ns = sum(loocv_kabx_preds$pcl_similarity_score < high_confidence_pcl_similarity_score_threshold)
+
+print('----------------------------------')
+print(sprintf('Using high-confidence PCL similarity score threshold of %f to assign MOA', high_confidence_pcl_similarity_score_threshold))
+print("LOOCV accuracy on all KABX compounds using single PCL similarity score threshold (pert_id)")
+print(str_c("Total number of KABX compounds or treatments evaluated: ", loocv_kabx_preds_results_n))
+print(str_c("Number of correct MOA assignments: ", loocv_kabx_preds_results_tp))
+print(str_c("Number of incorrect MOA assignments: ", loocv_kabx_preds_results_fp))
+print(str_c("Number of uncertain assignments: ", loocv_kabx_preds_results_ns))
+print(str_c("Precision (PPV): ", signif(loocv_kabx_preds_results_ppv, 2)))
+print(str_c("Sensitivity (TPR): ", signif(loocv_kabx_preds_results_tpr, 2)))
+print(str_c("F1 score: ", signif(loocv_kabx_preds_results_f1, 2)))
+
+print('----------------------------------')
+
+if (!(all(actual) == 1)){
+    # Plot the ROC curve
+    plot(rocData, main = "PCL similarity score", print.thres = TRUE, print.auc = TRUE)
+
+    #coords(rocData, "best")
+}
+
+ggscatter(loocv_kabx_preds %>% mutate(pcl_and_moa_agree = as.factor(pcl_and_moa_agree)), 
+          x = "pcl_similarity_score", 
+          y = "pcl_confidence_score",
+          color = "pcl_and_moa_agree",
+          palette = c("#00AFBB", "#E7B800"),
+          xlim = c(0, 1),
+          ylim = c(0, 1)
+         ) + geom_vline(xintercept = high_confidence_pcl_similarity_score_threshold, linetype = "dashed")
+
+# ## Make KABX set PCL-based MOA predictions in LOOCV (demo)
+
+dim(loocv_combined_results)
+head(loocv_combined_results)
+
+print("All KABX compounds")
+loocv_combined_results %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("Validatable (in multi-compound MOA) KABX compounds")
+loocv_combined_results %>%
+    filter(cmpd_from_validatable_moa) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("Active, validatable (in multi-compound MOA) KABX compounds")
+loocv_combined_results %>%
+    filter(!pert_id_only_weak_active_0.3_fit_gr & cmpd_from_validatable_moa) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("Active, validatable (in multi-compound MOA), and well-represented KABX compounds")
+loocv_combined_results %>%
+    filter(!pert_id_only_weak_active_0.3_fit_gr & cmpd_from_validatable_moa & pert_id_in_multi_cmpd_pcl) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("All KABX compounds with high-confidence PCL-based MOA prediction")
+loocv_combined_results %>%
+    filter(pcl_confidence_score >= 1) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("Validatable (in multi-compound MOA) KABX compounds with high-confidence PCL-based MOA prediction")
+loocv_combined_results %>%
+    filter(cmpd_from_validatable_moa & pcl_confidence_score >= 1) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("Active, validatable (in multi-compound MOA) KABX compounds with high-confidence PCL-based MOA prediction")
+loocv_combined_results %>%
+    filter(!pert_id_only_weak_active_0.3_fit_gr & cmpd_from_validatable_moa & pcl_confidence_score >= 1) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("Active, validatable (in multi-compound MOA), and well-represented KABX compounds with high-confidence PCL-based MOA prediction")
+loocv_combined_results %>%
+    filter(!pert_id_only_weak_active_0.3_fit_gr & cmpd_from_validatable_moa & pert_id_in_multi_cmpd_pcl & pcl_confidence_score >= 1) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+# ### Make predictions
+
+# #### Pert ID (allow multiple PCLs)
+
+pert_id_demo_loocv_preds_multi = loocv_combined_results %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    mutate(
+        matched_rids = paste0(unique(rid), collapse = "|"),
+        matched_pcl_descs = paste0(unique(pcl_desc), collapse = "|"),
+        
+        has_multiple_matched_rids = n_distinct(rid) > 1,
+        has_multiple_matched_pcl_descs = n_distinct(pcl_desc) > 1,
+        
+        num_matched_rids = n_distinct(rid),
+        num_matched_pcl_descs = n_distinct(pcl_desc)
+
+    ) %>%
+    slice(1)
+
+nrow(pert_id_demo_loocv_preds_multi)
+
+pert_id_demo_loocv_preds_multi %>%
+    filter(!is.na(pcl_and_moa_agree) & pcl_and_moa_agree == 1 & pcl_confidence_score >= 1) %>%
+    nrow()
+
+pert_id_demo_loocv_preds_multi %>%
+    filter(!is.na(pcl_and_moa_agree) & pcl_and_moa_agree == 0 & pcl_confidence_score >= 1) %>%
+    nrow()
+
+# Include KABX
+
+print("Including KABX")
+
+pert_id_demo_loocv_preds_multi %>%
+    filter(pcl_confidence_score >= 1 & has_multiple_matched_rids) %>%
+    nrow()
+
+pert_id_demo_loocv_preds_multi %>%
+    filter(pcl_confidence_score >= 1 & has_multiple_matched_pcl_descs) %>%
+    nrow()
+
+pert_id_demo_loocv_preds_multi %>%
+    filter(pcl_confidence_score>= 1 & has_multiple_matched_rids) %>%
+    nrow() / nrow(pert_id_demo_loocv_preds_multi)
+
+pert_id_demo_loocv_preds_multi %>%
+    filter(pcl_confidence_score >= 1 & has_multiple_matched_pcl_descs) %>%
+    nrow() / nrow(pert_id_demo_loocv_preds_multi)
+
+pert_id_demo_loocv_preds_multi %>%
+    filter(has_multiple_matched_rids) %>%
+    nrow()
+
+pert_id_demo_loocv_preds_multi %>%
+    filter(has_multiple_matched_pcl_descs) %>%
+    nrow()
+
+pert_id_demo_loocv_preds_multi %>%
+    filter(has_multiple_matched_rids) %>%
+    nrow() / nrow(pert_id_demo_loocv_preds_multi)
+
+pert_id_demo_loocv_preds_multi %>%
+    filter(has_multiple_matched_pcl_descs) %>%
+    nrow() / nrow(pert_id_demo_loocv_preds_multi)
+
+pert_id_demo_loocv_preds_multi %>%
+    head()
+
+pert_id_demo_loocv_preds_multi %>%
+    names()
+
+pert_id_demo_loocv_preds_multi <- pert_id_demo_loocv_preds_multi %>%
+    mutate( 
+        pert_id_active_0.3_fit_gr = !pert_id_only_weak_active_0.3_fit_gr,
+        compound_group = case_when(
+            !cmpd_from_validatable_moa ~ 'compound not validatable (from single-compound MOA)',
+            pert_id_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl ~ 'compound active and well-represented in KABX',
+            !pert_id_active_0.3_fit_gr ~ 'compound inactive',
+            !pert_id_in_multi_cmpd_pcl ~ 'compound not well-represented in KABX',
+            TRUE ~ "other"
+        ),
+        min_gr_at_highest_doses = signif(min_gr_at_highest_doses, 3),
+        pcl_and_moa_agree = ifelse(pcl_and_moa_agree == 1, TRUE, FALSE)
+    ) %>%
+    select(-max_pcl_confidence_score) %>%
+    select(pert_id, 
+           target_description,
+           pcl_confidence_score, 
+           pcl_desc,
+           rid,
+           matched_rids,
+           matched_pcl_descs,
+           compound_group,
+           
+           everything()
+          ) %>%
+    mutate(
+            high_confidence_pred = pcl_confidence_score >= 1,
+            active_and_high_confidence_pred = high_confidence_pred & !pert_id_only_weak_active_0.3_fit_gr,
+            compound_activity_group = if_else(pert_id_only_weak_active_0.3_fit_gr, "Weakly active/inactive", "Active"),
+            .after = matched_pcl_descs
+        ) %>%
+    mutate(
+        moa_assignment = if_else(high_confidence_pred, pcl_desc, "uncertain"),
+        moa_assignment_concordance = case_when(
+            !high_confidence_pred ~ "",
+            pcl_and_moa_agree ~ "concordant",
+            !pcl_and_moa_agree ~ "discordant",
+            TRUE ~ "error"
+        ),
+        .after = pcl_confidence_score
+    ) %>%
+    mutate(
+        pcl_and_moa_concordance = if_else(pcl_and_moa_agree, "concordant", "discordant"),
+        .after = pcl_desc
+    ) %>%
+    arrange(desc(pcl_confidence_score), target_description, pert_id)
+
+pert_id_demo_loocv_preds_multi %>%
+    head()
+
+pert_id_demo_loocv_preds_multi %>%
+    names()
+
+pert_id_demo_loocv_preds_multi %>%
+    janitor::tabyl(moa_assignment_concordance)
+
+#dim(pert_id_demo_loocv_preds_multi)
+
+#pert_id_demo_loocv_preds_multi = inner_join(pert_id_demo_loocv_preds_multi,
+#           loocv_combined_opt_scores_tbls,
+#                                       by = c("pert_id" = "loocv_pert_id", "rid" = "pcl_rid", "pcl_desc" = "pcl_desc")
+#                                      )
+
+dim(pert_id_demo_loocv_preds_multi)
+head(pert_id_demo_loocv_preds_multi)
+
+names(pert_id_demo_loocv_preds_multi)
+
+write_excel_csv(pert_id_demo_loocv_preds_multi,
+                file.path(outdir, kabx_demo_loocv_pcl_predictions_full_tbl_savename))
+
+simplify_pert_id_demo_loocv_preds_multi <- pert_id_demo_loocv_preds_multi %>%
+    select(pert_id:pcl_and_moa_concordance,
+           high_confidence_pred, cmpd_from_validatable_moa, min_gr_at_highest_doses, compound_activity_group, pert_id_in_multi_cmpd_pcl, compound_group,
+           pcl_pert_ids,
+           #rid, matched_rids,
+           matched_pcl_descs
+          ) %>%
+    mutate(
+        high_confidence_pred = if_else(high_confidence_pred, "yes", "no"),
+        cmpd_from_validatable_moa = if_else(cmpd_from_validatable_moa, "yes", "no"),
+        compound_activity_group = if_else(compound_activity_group == "Active", "yes", "no"),
+        pert_id_in_multi_cmpd_pcl = if_else(pert_id_in_multi_cmpd_pcl, "yes", "no")
+    ) %>%
+    rename(
+        "Compound ID (pert_id)" = "pert_id",
+        "Annotated MOA" = "target_description",
+        "LOOCV PCL confidence score" = "pcl_confidence_score",
+        "LOOCV PCL-based MOA assignment" = "moa_assignment",
+        "Concordant/discordant, MOA assignment" = "moa_assignment_concordance",
+        "LOOCV PCL-based MOA prediction, top" = "pcl_desc",
+        "Concordant/discordant, top" = "pcl_and_moa_concordance",
+        "LOOCV PCL-based MOA prediction is at high-confidence threshold" = "high_confidence_pred",
+        #"PCL RID, top" = "rid",
+        #"PCL RIDs, all with highest confidence" = "matched_rids",
+        "Compound from multi-compound, validatable MOA" = "cmpd_from_validatable_moa",
+        "Minimum strain GR at highest tested dose" = "min_gr_at_highest_doses",
+        "Compound was active" = "compound_activity_group",
+        "Compound was well-represented in KABX (in multi-compound PCL in full results)" = "pert_id_in_multi_cmpd_pcl",
+        "Compound category" = "compound_group",
+        "Reference compounds matched to in PCL-based MOA prediction, top" = "pcl_pert_ids",
+        "LOOCV PCL-based MOA predictions, all with highest confidence" = "matched_pcl_descs"
+    )
+
+simplify_pert_id_demo_loocv_preds_multi %>%
+    dim()
+
+simplify_pert_id_demo_loocv_preds_multi %>%
+    head()
+
+write_excel_csv(simplify_pert_id_demo_loocv_preds_multi,
+                file.path(outdir, kabx_demo_loocv_pcl_predictions_simplify_tbl_savename))
+
+# ## Make KABX set PCL-based MOA predictions in LOOCV (full, shared results)
+
+dim(loocv_combined_results_full_shared)
+head(loocv_combined_results_full_shared)
+
+print("All KABX compounds")
+loocv_combined_results_full_shared %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("Validatable (in multi-compound MOA) KABX compounds")
+loocv_combined_results_full_shared %>%
+    filter(cmpd_from_validatable_moa) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("Active, validatable (in multi-compound MOA) KABX compounds")
+loocv_combined_results_full_shared %>%
+    filter(!pert_id_only_weak_active_0.3_fit_gr & cmpd_from_validatable_moa) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("Active, validatable (in multi-compound MOA), and well-represented KABX compounds")
+loocv_combined_results_full_shared %>%
+    filter(!pert_id_only_weak_active_0.3_fit_gr & cmpd_from_validatable_moa & pert_id_in_multi_cmpd_pcl) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("All KABX compounds with high-confidence PCL-based MOA prediction")
+loocv_combined_results_full_shared %>%
+    filter(pcl_confidence_score >= 1) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("Validatable (in multi-compound MOA) KABX compounds with high-confidence PCL-based MOA prediction")
+loocv_combined_results_full_shared %>%
+    filter(cmpd_from_validatable_moa & pcl_confidence_score >= 1) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("Active, validatable (in multi-compound MOA) KABX compounds with high-confidence PCL-based MOA prediction")
+loocv_combined_results_full_shared %>%
+    filter(!pert_id_only_weak_active_0.3_fit_gr & cmpd_from_validatable_moa & pcl_confidence_score >= 1) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("Active, validatable (in multi-compound MOA), and well-represented KABX compounds with high-confidence PCL-based MOA prediction")
+loocv_combined_results_full_shared %>%
+    filter(!pert_id_only_weak_active_0.3_fit_gr & cmpd_from_validatable_moa & pert_id_in_multi_cmpd_pcl & pcl_confidence_score >= 1) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+# ### Make predictions
+
+# #### Pert ID (allow multiple PCLs)
+
+pert_id_loocv_preds_multi = loocv_combined_results_full_shared %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    mutate(
+        matched_rids = paste0(unique(rid), collapse = "|"),
+        matched_pcl_descs = paste0(unique(pcl_desc), collapse = "|"),
+        
+        has_multiple_matched_rids = n_distinct(rid) > 1,
+        has_multiple_matched_pcl_descs = n_distinct(pcl_desc) > 1,
+        
+        num_matched_rids = n_distinct(rid),
+        num_matched_pcl_descs = n_distinct(pcl_desc)
+
+    ) %>%
+    slice(1)
+
+nrow(pert_id_loocv_preds_multi)
+
+pert_id_loocv_preds_multi %>%
+    filter(!is.na(pcl_and_moa_agree) & pcl_and_moa_agree == 1 & pcl_confidence_score >= 1) %>%
+    nrow()
+
+pert_id_loocv_preds_multi %>%
+    filter(!is.na(pcl_and_moa_agree) & pcl_and_moa_agree == 0 & pcl_confidence_score >= 1) %>%
+    nrow()
+
+# Include KABX
+
+print("Including KABX")
+
+pert_id_loocv_preds_multi %>%
+    filter(pcl_confidence_score >= 1 & has_multiple_matched_rids) %>%
+    nrow()
+
+pert_id_loocv_preds_multi %>%
+    filter(pcl_confidence_score >= 1 & has_multiple_matched_pcl_descs) %>%
+    nrow()
+
+pert_id_loocv_preds_multi %>%
+    filter(pcl_confidence_score>= 1 & has_multiple_matched_rids) %>%
+    nrow() / nrow(pert_id_loocv_preds_multi)
+
+pert_id_loocv_preds_multi %>%
+    filter(pcl_confidence_score >= 1 & has_multiple_matched_pcl_descs) %>%
+    nrow() / nrow(pert_id_loocv_preds_multi)
+
+pert_id_loocv_preds_multi %>%
+    filter(has_multiple_matched_rids) %>%
+    nrow()
+
+pert_id_loocv_preds_multi %>%
+    filter(has_multiple_matched_pcl_descs) %>%
+    nrow()
+
+pert_id_loocv_preds_multi %>%
+    filter(has_multiple_matched_rids) %>%
+    nrow() / nrow(pert_id_loocv_preds_multi)
+
+pert_id_loocv_preds_multi %>%
+    filter(has_multiple_matched_pcl_descs) %>%
+    nrow() / nrow(pert_id_loocv_preds_multi)
+
+pert_id_loocv_preds_multi %>%
+    head()
+
+pert_id_loocv_preds_multi %>%
+    names()
+
+pert_id_loocv_preds_multi <- pert_id_loocv_preds_multi %>%
+    mutate( 
+        pert_id_active_0.3_fit_gr = !pert_id_only_weak_active_0.3_fit_gr,
+        compound_group = case_when(
+            !cmpd_from_validatable_moa ~ 'compound not validatable (from single-compound MOA)',
+            pert_id_active_0.3_fit_gr & pert_id_in_multi_cmpd_pcl ~ 'compound active and well-represented in KABX',
+            !pert_id_active_0.3_fit_gr ~ 'compound inactive',
+            !pert_id_in_multi_cmpd_pcl ~ 'compound not well-represented in KABX',
+            TRUE ~ "other"
+        ),
+        min_gr_at_highest_doses = signif(min_gr_at_highest_doses, 3),
+        pcl_and_moa_agree = ifelse(pcl_and_moa_agree == 1, TRUE, FALSE)
+    ) %>%
+    select(-max_pcl_confidence_score) %>%
+    select(pert_id, 
+           target_description,
+           pcl_confidence_score, 
+           pcl_desc,
+           rid,
+           matched_rids,
+           matched_pcl_descs,
+           compound_group,
+           
+           everything()
+          ) %>%
+    mutate(
+            high_confidence_pred = pcl_confidence_score >= 1,
+            active_and_high_confidence_pred = high_confidence_pred & !pert_id_only_weak_active_0.3_fit_gr,
+            compound_activity_group = if_else(pert_id_only_weak_active_0.3_fit_gr, "Weakly active/inactive", "Active"),
+            .after = matched_pcl_descs
+        ) %>%
+    mutate(
+        moa_assignment = if_else(high_confidence_pred, pcl_desc, "uncertain"),
+        moa_assignment_concordance = case_when(
+            !high_confidence_pred ~ "",
+            pcl_and_moa_agree ~ "concordant",
+            !pcl_and_moa_agree ~ "discordant",
+            TRUE ~ "error"
+        ),
+        .after = pcl_confidence_score
+    ) %>%
+    mutate(
+        pcl_and_moa_concordance = if_else(pcl_and_moa_agree, "concordant", "discordant"),
+        .after = pcl_desc
+    ) %>%
+    arrange(desc(pcl_confidence_score), target_description, pert_id)
+
+pert_id_loocv_preds_multi %>%
+    head()
+
+pert_id_loocv_preds_multi %>%
+    names()
+
+pert_id_loocv_preds_multi %>%
+    janitor::tabyl(moa_assignment_concordance)
+
+dim(pert_id_loocv_preds_multi)
+
+pert_id_loocv_preds_multi = inner_join(pert_id_loocv_preds_multi,
+           loocv_combined_opt_scores_tbls_full_shared,
+                                       by = c("pert_id" = "loocv_pert_id", "rid" = "pcl_rid", "pcl_desc" = "pcl_desc")
+                                      )
+
+dim(pert_id_loocv_preds_multi)
+head(pert_id_loocv_preds_multi)
+
+names(pert_id_loocv_preds_multi)
+
+write_excel_csv(pert_id_loocv_preds_multi,
+                file.path(outdir, kabx_loocv_pcl_predictions_full_tbl_savename))
+
+simplify_pert_id_loocv_preds_multi <- pert_id_loocv_preds_multi %>%
+    select(pert_id:pcl_and_moa_concordance,
+           high_confidence_pred, cmpd_from_validatable_moa, min_gr_at_highest_doses, compound_activity_group, pert_id_in_multi_cmpd_pcl, compound_group,
+           pcl_pert_ids,
+           #rid, matched_rids,
+           matched_pcl_descs
+          ) %>%
+    mutate(
+        high_confidence_pred = if_else(high_confidence_pred, "yes", "no"),
+        cmpd_from_validatable_moa = if_else(cmpd_from_validatable_moa, "yes", "no"),
+        compound_activity_group = if_else(compound_activity_group == "Active", "yes", "no"),
+        pert_id_in_multi_cmpd_pcl = if_else(pert_id_in_multi_cmpd_pcl, "yes", "no")
+    ) %>%
+    rename(
+        "Compound ID (pert_id)" = "pert_id",
+        "Annotated MOA" = "target_description",
+        "LOOCV PCL confidence score" = "pcl_confidence_score",
+        "LOOCV PCL-based MOA assignment" = "moa_assignment",
+        "Concordant/discordant, MOA assignment" = "moa_assignment_concordance",
+        "LOOCV PCL-based MOA prediction, top" = "pcl_desc",
+        "Concordant/discordant, top" = "pcl_and_moa_concordance",
+        "LOOCV PCL-based MOA prediction is at high-confidence threshold" = "high_confidence_pred",
+        #"PCL RID, top" = "rid",
+        #"PCL RIDs, all with highest confidence" = "matched_rids",
+        "Compound from multi-compound, validatable MOA" = "cmpd_from_validatable_moa",
+        "Minimum strain GR at highest tested dose" = "min_gr_at_highest_doses",
+        "Compound was active" = "compound_activity_group",
+        "Compound was well-represented in KABX (in multi-compound PCL in full results)" = "pert_id_in_multi_cmpd_pcl",
+        "Compound category" = "compound_group",
+        "Reference compounds matched to in PCL-based MOA prediction, top" = "pcl_pert_ids",
+        "LOOCV PCL-based MOA predictions, all with highest confidence" = "matched_pcl_descs"
+    )
+
+simplify_pert_id_loocv_preds_multi %>%
+    dim()
+
+simplify_pert_id_loocv_preds_multi %>%
+    head()
+
+write_excel_csv(simplify_pert_id_loocv_preds_multi,
+                file.path(outdir, kabx_loocv_pcl_predictions_simplify_tbl_savename))
+
+# ## Make experimental compound PCL-based MOA predictions
+
+full_test_cmpd_results <- read.delim(pcl_similarity_to_confidence_score_test_cmpd_results_path)
+
+dim(full_test_cmpd_results)
+head(full_test_cmpd_results)
+
+any(full_test_cmpd_results$pcl_and_moa_agree == 1)
+
+full_test_cmpd_results <- full_test_cmpd_results %>%
+    mutate(
+        target_description = NA_character_,
+        pcl_and_moa_agree = NA_integer_
+    )
+
+dim(full_test_cmpd_results)
+head(full_test_cmpd_results)
+
+dim(full_test_cmpd_results)
+
+dim(inner_join(full_test_cmpd_results, summ_pert_id_activity, by = 'pert_id'))
+
+full_test_cmpd_results = inner_join(full_test_cmpd_results, summ_pert_id_activity, by = 'pert_id')
+
+dim(full_test_cmpd_results)
+head(full_test_cmpd_results)
+
+print("All test compounds")
+full_test_cmpd_results %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("Active test compounds")
+full_test_cmpd_results %>%
+    filter(!pert_id_only_weak_active_0.3_fit_gr) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("All test compounds with high-confidence PCL-based MOA prediction")
+full_test_cmpd_results %>%
+    filter(pcl_confidence_score >= 1) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+print("Active test compounds with high-confidence PCL-based MOA prediction")
+full_test_cmpd_results %>%
+    filter(!pert_id_only_weak_active_0.3_fit_gr & pcl_confidence_score >= 1) %>%
+    summarize(
+        n_distinct(rid),
+        n_distinct(pcl_desc),
+        n_distinct(pert_id),
+        n_distinct(broad_id),
+        n_distinct(proj_broad_id),
+        n_distinct(cid)
+    )
+
+# ### Make predictions
+
+# #### Pert ID (allow multiple PCLs)
+
+full_test_cmpd_results %>%
+    filter(pcl_confidence_score >= 1) %>%
+    select(pert_id) %>% distinct() %>%
+    arrange(pert_id)
+
+pert_id_test_preds_multi = full_test_cmpd_results %>%
+    group_by(pert_id) %>%
+    mutate(
+        max_pcl_confidence_score = max(pcl_confidence_score, na.rm = TRUE)
+    ) %>%
+    filter(pcl_confidence_score >= max_pcl_confidence_score) %>%
+    group_by(pert_id, rid) %>%
+    mutate(
+        n_pcl_desc_votes = n(),
+    ) %>%
+    ungroup() %>% group_by(pert_id) %>%
+    arrange(desc(pcl_confidence_score), desc(n_pcl_desc_votes), desc(pcl_similarity_score), .by_group = TRUE) %>%
+    mutate(
+        matched_rids = paste0(unique(rid), collapse = "|"),
+        matched_pcl_descs = paste0(unique(pcl_desc), collapse = "|"),
+        
+        has_multiple_matched_rids = n_distinct(rid) > 1,
+        has_multiple_matched_pcl_descs = n_distinct(pcl_desc) > 1,
+        
+        num_matched_rids = n_distinct(rid),
+        num_matched_pcl_descs = n_distinct(pcl_desc)
+
+    ) %>%
+    slice(1)
+
+nrow(pert_id_test_preds_multi)
+
+# Only experimental compounds
+
+print("Only experimental compounds")
+
+num_exp_cmpds = pert_id_test_preds_multi %>% filter(is.na(pcl_and_moa_agree)) %>% nrow()
+
+num_exp_cmpds
+
+pert_id_test_preds_multi %>%
+    filter(is.na(pcl_and_moa_agree) & pcl_confidence_score >= 1) %>%
+    nrow()
+
+pert_id_test_preds_multi %>%
+    filter(is.na(pcl_and_moa_agree) & pcl_confidence_score < 1) %>%
+    nrow()
+
+pert_id_test_preds_multi %>%
+    filter(is.na(pcl_and_moa_agree) & pcl_confidence_score >= 1 & has_multiple_matched_rids) %>%
+    nrow()
+
+pert_id_test_preds_multi %>%
+    filter(is.na(pcl_and_moa_agree) & pcl_confidence_score >= 1 & has_multiple_matched_pcl_descs) %>%
+    nrow()
+
+pert_id_test_preds_multi %>%
+    filter(is.na(pcl_and_moa_agree) & pcl_confidence_score >= 1 & has_multiple_matched_rids) %>%
+    nrow() / num_exp_cmpds
+
+pert_id_test_preds_multi %>%
+    filter(is.na(pcl_and_moa_agree) & pcl_confidence_score >= 1 & has_multiple_matched_pcl_descs) %>%
+    nrow() / num_exp_cmpds
+
+pert_id_test_preds_multi %>%
+    filter(is.na(pcl_and_moa_agree) & has_multiple_matched_rids) %>%
+    nrow()
+
+pert_id_test_preds_multi %>%
+    filter(is.na(pcl_and_moa_agree) & has_multiple_matched_pcl_descs) %>%
+    nrow()
+
+pert_id_test_preds_multi %>%
+    filter(is.na(pcl_and_moa_agree) & has_multiple_matched_rids) %>%
+    nrow() / num_exp_cmpds
+
+pert_id_test_preds_multi %>%
+    filter(is.na(pcl_and_moa_agree) & has_multiple_matched_pcl_descs) %>%
+    nrow() / num_exp_cmpds
+
+pert_id_test_preds_multi %>%
+    head()
+
+pert_id_test_preds_multi %>%
+    names()
+
+pert_id_test_preds_multi <- pert_id_test_preds_multi %>%
+    select(-cmpd_from_validatable_moa, -pert_id_in_multi_cmpd_pcl, -max_pcl_confidence_score) %>%
+    select(pert_id, 
+           pcl_confidence_score, 
+           pcl_desc,
+           rid,
+           matched_rids,
+           matched_pcl_descs,
+           
+           everything()
+          ) %>%
+    mutate(
+            high_confidence_pred = pcl_confidence_score >= 1,
+            active_and_high_confidence_pred = high_confidence_pred & !pert_id_only_weak_active_0.3_fit_gr,
+            compound_activity_group = if_else(pert_id_only_weak_active_0.3_fit_gr, "Weakly active/inactive", "Active"),
+            .after = matched_pcl_descs
+        ) %>%
+    mutate(
+        moa_assignment = if_else(pcl_confidence_score >= 1, pcl_desc, "uncertain"),
+        .after = pcl_confidence_score
+    )
+
+pert_id_test_preds_multi %>%
+    head()
+
+pert_id_test_preds_multi %>%
+    names()
+
+dim(pert_id_test_preds_multi)
+
+pert_id_test_preds_multi = inner_join(pert_id_test_preds_multi,
+           pcl_metadata2add %>% select(-id, -pcl_rid))
+
+dim(pert_id_test_preds_multi)
+head(pert_id_test_preds_multi)
+
+names(pert_id_test_preds_multi)
+
+write_excel_csv(pert_id_test_preds_multi,
+                file.path(outdir, test_cmpd_pcl_predictions_full_tbl_savename))
+
+simplify_pert_id_test_preds_multi <- pert_id_test_preds_multi %>%
+    select(pert_id:matched_rids, min_gr_at_highest_doses, compound_activity_group, pcl_pert_ids) %>%
+    rename(
+        "Compound ID (pert_id)" = "pert_id",
+        "PCL confidence score" = "pcl_confidence_score",
+        "PCL-based MOA assignment" = "moa_assignment",
+        "PCL-based MOA prediction, top" = "pcl_desc",
+        "PCL RID, top" = "rid",
+        "PCL RIDs, all with highest confidence" = "matched_rids",
+        "Minimum strain GR at highest tested dose" = "min_gr_at_highest_doses",
+        "Compound was active" = "compound_activity_group",
+        "Reference compounds matched to in PCL-based MOA prediction, top" = "pcl_pert_ids"
+    )
+
+simplify_pert_id_test_preds_multi %>%
+    dim()
+
+simplify_pert_id_test_preds_multi %>%
+    head()
+
+write_excel_csv(simplify_pert_id_test_preds_multi,
+                file.path(outdir, test_cmpd_pcl_predictions_simplify_tbl_savename))
+
+# ## End
