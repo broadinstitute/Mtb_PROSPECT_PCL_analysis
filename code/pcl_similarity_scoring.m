@@ -136,9 +136,9 @@ sum(cidx)
 c = ds_slice(c,'ridx',ridx,'cidx',cidx);
 %c_rank = ds_slice(c_rank,'ridx',ridx,'cidx',cidx);
 
-% Save gctx files
-disp('Saving gctx files')
-mkgctx(fullfile(outdir,'ds_corr.gctx'), c)
+% Save gctx files - commented out for storage efficiency purposes
+%disp('Saving gctx files')
+%mkgctx(fullfile(outdir,'ds_corr.gctx'), c)
 %mkgctx(fullfile(outdir,'ds_corr_rank.gctx'), c_rank)
 
 % ## Run MoA discovery using MoA-based clusters with overlap

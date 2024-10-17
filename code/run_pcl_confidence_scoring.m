@@ -8,7 +8,7 @@ mk_cd_dir(wkdir, false);
 
 % input whether to evaluate original cluster results produced using Matlab 2020a
 
-use_matlab_2020a_clusters = true % Matlab 2020b featured changes to the built-in sum, eigs function and others that slightly alter the cluster results even when controlling for the random seed, number of workers for multi-threading, and order of treatments in the input matrices
+use_matlab_2020a_clusters = false % Matlab 2020b featured changes to the built-in sum, eigs function and others that slightly alter the cluster results even when controlling for the random seed, number of workers for multi-threading, and order of treatments in the input matrices
 
 matlab_2020a_clusters_outdir_name = 'clusters_spectral_clustering_thrsh_rank_le20_k_med_gap_den_matlab_2020a'
 

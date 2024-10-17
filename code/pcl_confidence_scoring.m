@@ -663,6 +663,20 @@ wtable(opt_tbl,fullfile(outdir,opt_tbl_savename));
 
 wtable(out_tbl_test_cmpd,fullfile(outdir,out_tbl_test_cmpd_savename));
 
+% Compress .txt files and delete to free up storage space (the compressed tab-separated .tsv/.txt files will be read in automatically in R)
+
+gzip(fullfile(outdir,out_tbl_savename));
+
+gzip(fullfile(outdir,opt_tbl_savename));
+
+gzip(fullfile(outdir,out_tbl_test_cmpd_savename));
+
+delete(fullfile(outdir,out_tbl_savename));
+
+delete(fullfile(outdir,opt_tbl_savename));
+
+delete(fullfile(outdir,out_tbl_test_cmpd_savename));
+
 disp('Size and head of PCL similarity x confidence score results table for training (KABX) set reference compounds:')
 size(out_tbl)
 head(out_tbl)

@@ -67,11 +67,11 @@ any_dose_gr_filename = 'any_dose_min_gr.rds'
 
 max_dose_gr_filename = 'max_dose_min_gr.rds'
 
-out_tbl_savename = 'by_pcl_similarity_to_confidence_score_thresholds_from_training_on_kabx.txt'
+out_tbl_savename = 'by_pcl_similarity_to_confidence_score_thresholds_from_training_on_kabx.txt.gz' # compressed in Matlab on previous step for storage-efficiency purposes
 
-opt_tbl_savename = 'by_pcl_high_confidence_similarity_score_thresholds_from_training_on_kabx.txt'
+opt_tbl_savename = 'by_pcl_high_confidence_similarity_score_thresholds_from_training_on_kabx.txt.gz' # compressed in Matlab on previous step for storage-efficiency purposes
 
-out_tbl_test_cmpd_savename = 'by_pcl_similarity_to_confidence_score_test_cmpd_results.txt'
+out_tbl_test_cmpd_savename = 'by_pcl_similarity_to_confidence_score_test_cmpd_results.txt.gz' # compressed in Matlab on previous step for storage-efficiency purposes
 
 pcl_train_summ_savename = "pcl_similarity_to_confidence_score_training_summary.csv"
 
@@ -353,7 +353,7 @@ head(sub_pcls_tbl_summ)
 #### Add PCL training/QC info to PCL summary table
 
 ```{r}
-pcl_similarity_to_confidence_score_tbl = read.delim(pcl_similarity_to_confidence_score_tbl_path)
+pcl_similarity_to_confidence_score_tbl = read_tsv(pcl_similarity_to_confidence_score_tbl_path)
 
 dim(pcl_similarity_to_confidence_score_tbl)
 head(pcl_similarity_to_confidence_score_tbl)
@@ -430,7 +430,7 @@ add2pcl_high_confidence_similarity_score_thresholds_tbl %>%
 ```
 
 ```{r}
-pcl_high_confidence_similarity_score_thresholds_tbl <- read.delim(pcl_high_confidence_similarity_score_thresholds_tbl_path)
+pcl_high_confidence_similarity_score_thresholds_tbl <- read_tsv(pcl_high_confidence_similarity_score_thresholds_tbl_path)
 
 dim(pcl_high_confidence_similarity_score_thresholds_tbl)
 head(pcl_high_confidence_similarity_score_thresholds_tbl)
@@ -997,7 +997,7 @@ for(i in 1:nrow(kabx_pert_id_list_expect_loocv_data)){
         next
     }
     
-    this_full_model_opt_scores_tbl = read.delim(this_full_model_opt_scores_path)
+    this_full_model_opt_scores_tbl = read_tsv(this_full_model_opt_scores_path)
 
     #dim(this_full_model_opt_scores_tbl)
 
@@ -1154,7 +1154,7 @@ for(i in 1:nrow(kabx_pert_id_list_expect_loocv_data)){
         next
     }
     
-    this_loocv_cmpd_results = read.delim(this_loocv_cmpd_results_path)
+    this_loocv_cmpd_results = read_tsv(this_loocv_cmpd_results_path)
 
     dim(this_loocv_cmpd_results)
 
@@ -5683,7 +5683,7 @@ write_excel_csv(simplify_pert_id_loocv_preds_multi,
 ## Make experimental compound PCL-based MOA predictions
 
 ```{r}
-full_test_cmpd_results <- read.delim(pcl_similarity_to_confidence_score_test_cmpd_results_path)
+full_test_cmpd_results <- read_tsv(pcl_similarity_to_confidence_score_test_cmpd_results_path)
 
 dim(full_test_cmpd_results)
 head(full_test_cmpd_results)
