@@ -27,7 +27,7 @@ en = eig(Ln);
 % Find the largest difference in eigenvalues
 den = diff(en);
 den_mask = den;
-den_mask(en >= 1) = 0; % exclude eigenvalues greater than or equal to one which would maximize rather than minimize the variance explained by clusters or connected components in the graph Laplacian derived from the MOA adjacency matrix; otherwise only all singleton dsCGI profile clusters could sometimes be selected for k_gap_den
+den_mask(en >= 1) = 0; % exclude eigenvalues greater than or equal to one which would maximize rather than minimize the variance explained by clusters or connected components in the graph Laplacian derived from the MOA adjacency matrix; otherwise only all singleton CGI profile clusters could sometimes be selected for k_gap_den
 [m,k_gap_den] = max(den_mask);
 
 % Find the number of small eigenvalues approximately equal to zero

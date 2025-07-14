@@ -1,0 +1,105 @@
+metadata_version: 1
+name: Reference-based chemical-genetic interaction profiling to elucidate small molecule
+  mechanism of action in Mycobacterium tuberculosis
+description: In an era of increasing resistance, new and effective strategies are
+  needed for antibiotic discovery. Whole-cell active screens yield candidate compounds
+  lacking mechanism-of-action (MOA) information, and thus do not provide biological
+  insight for prioritization. We previously reported PROSPECT (**PR**imary screening
+  **O**f **S**trains to **P**rioritize **E**xpanded **C**hemistry and **T**argets),
+  an antimicrobial discovery strategy that measures chemical-genetic interactions
+  between small molecules and a pool of *Mycobacterium tuberculosis* mutants, each
+  depleted of a different essential protein target. PROSPECT facilitates efficient
+  hit prioritization by simultaneously identifying whole-cell active compounds with
+  high sensitivity and providing early insights into their MOA. Here, we report a
+  reference-based approach to infer MOA from often complex PROSPECT data. For this
+  aim, we curated a reference set of 437 compounds with published, annotated MOA and
+  known or suspected antitubercular activity, and applied PROSPECT to it. We then
+  developed **P**erturbagen **CL**ass (PCL) analysis, a computational method that
+  predicts MOA by comparing chemical-genetic interaction profiles of unknown compounds
+  to those of this reference set. In leave-one-out cross-validation, PCL analysis
+  correctly predicted MOA with 70% sensitivity and 75% precision. When applied to
+  75 antitubercular leads with known MOA previously reported by GlaxoSmithKline (GSK),
+  PCL analysis similarly achieved 69% sensitivity and 87% precision. We also analyzed
+  98 GSK compounds lacking MOA information, predicting 60 of them to act via a reference
+  MOA, and followed up with functional validation of 29 compounds predicted to target
+  respiration-related MOAs. Finally, we applied PROSPECT and PCL analysis to ~5,000
+  compounds from larger unbiased libraries that had not been preselected for antitubercular
+  activity. PCL analysis identified a novel scaffold lacking wild-type activity but
+  predicted to inhibit respiration via QcrB, and we confirmed this prediction while
+  chemically optimizing this scaffold to achieve wild-type activity. PCL analysis
+  of PROSPECT data thus enables rapid MOA assignment and hit prioritization, advancing
+  the discovery of new, potent antitubercular compounds.
+tags:
+- Drug discovery
+- Target identification
+- High-throughput screening
+- Small molecules
+- bacteria
+- Mycobacterium tuberculosis
+authors:
+- name: Austin Nathaniel Bond
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Marek Orzechowski
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Shuting Zhang
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Ishay Ben-Zion
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Allison Lemmer
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Nathaniel Garry
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Katie Lee
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Michael Chen
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Kayla Delano
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Emily Gath
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Aaron Golas
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Raymond Nietupski
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Michael Fitzgerald
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Sabine Ehrt
+  affiliations:
+  - name: Weill Cornell Medical College
+- name: Eric J. Rubin
+  affiliations:
+  - name: Harvard T. H. Chan School of Public Health
+- name: Christopher M. Sassetti
+  affiliations:
+  - name: UMass Chan Medical School
+- name: Dirk Schnappinger
+  affiliations:
+  - name: Weill Cornell Medical College
+- name: Noam Shoresh
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Diana K. Hunt
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: James E. Gomez
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+- name: Deborah T. Hung
+  affiliations:
+  - name: Broad Institute of MIT and Harvard
+corresponding_contributor:
+  name: Deborah T. Hung
+  email: dhung@broadinstitute.org

@@ -12,11 +12,11 @@ prepare_loocv = true
 
 demo_loocv = true
 
-demo_loocv_number_or_list = 'number' % 'number' or 'list'
+demo_loocv_number_or_list = 'list' % 'number' or 'list'
 
 demo_loocv_number_cmpds = 1
 
-demo_loocv_list_cmpds = {'BRD-K04804440','BRD-K01507359','BRD-K87202646','BRD-K59853741', 'BRD-K27302037'} % Ciprofloxacin, Rifampin, Isoniazid, Q203, Thioacetazone
+demo_loocv_list_cmpds = {'BRD-K04804440','BRD-K01507359'} % Ciprofloxacin, Rifampin
 
 results_subdir_prefix = 'loocv_pcls/leave_out_cmpd_'
 
@@ -24,7 +24,7 @@ loocv_save_fig = true % .png files of spectral clustering input and output
 
 loocv_save_out = true % save tabular and gmt files for each MOA separately with the output of spectral clsutering
 
-unique_kabx_cmpds_tbl_path = '../results/kabx_pert_ids_tbl_for_loocv.txt'
+unique_reference_set_cmpds_tbl_path = '../results/reference_set_pert_ids_tbl_for_loocv.txt'
 
 
 % general inputs
@@ -50,7 +50,7 @@ rng_seed = 0; % specified seed for initializing the random number generator, Mat
 
 num_threads_for_multithreading = 4 % number of computational threads to use for multi-threading enabled Matlab functions including eigs; data was originally processed with 4 CPU cores or threads, this is set for reproducibility across CPU hardware
 
-thrsh_rank = 20 % threshold for average pairwise rank of correlation across KABX to connect treatments as mutual nearest-neighbors
+thrsh_rank = 20 % threshold for average pairwise rank of correlation across reference set to connect conditions as mutual nearest-neighbors
 
 thrsh_factor = 1; % factor to multiply by thrsh_rank if dynamic_thrsh_per_moa is false; default is 1
 
@@ -58,14 +58,14 @@ dynamic_thrsh_per_moa = false % if true then threshold is round(log(size of MOA)
 
 k_type = 'k_med_gap_den' % eigengap heuristic to take for estimating number of K clusters: k_num_zero, k_num_zero_plus_one, k_med_gap_den, k_gap_den (see create_laplacian_matrix.m for additional information)
 
-show_hclust = true % if true then apply hierarchical clustering to correlation matrix prior to running spectral clustering, whether or not this is performed can minimally impact final cluster results especially for larger MOAs with greater number of K clusters due to stochasticity (randomized initialization) of k-means++ clustering; original results did apply hierarchical clustering but this step is not required for the method to be successful
+show_hclust = true % if true hierarchical clustering is applied to the correlation matrix before spectral clustering. While this step was used in the original analysis, it is not required for the method to be successful. For larger MOAs with more K clusters, hierarchical clustering may slightly influence final cluster assignments due to the inherent stochasticity of k-means++ initialization, but overall, its impact on results is minimal
 
 % outputs
 
 if dynamic_thrsh_per_moa
-    outdir_name = sprintf('clusters_spectral_clustering_thrsh_rank_le%dxlogsize_%s', thrsh_rank, k_type) % log(MOA size), i.e. the number of treatments/dsCGI profiles in the MOA
+    outdir_name = sprintf('demo_clusters_spectral_clustering_thrsh_rank_le%dxlogsize_%s', thrsh_rank, k_type) % log(MOA size), i.e. the number of conditions/CGI profiles in the MOA
 else
-    outdir_name = sprintf('clusters_spectral_clustering_thrsh_rank_le%d_%s', thrsh_rank, k_type)
+    outdir_name = sprintf('demo_clusters_spectral_clustering_thrsh_rank_le%d_%s', thrsh_rank, k_type)
 end
 
 outdir = fullfile(wkdir, outdir_name)
@@ -230,15 +230,15 @@ num_trts_in_clusters = numel(unique(out_nonsingle.cid));
 
 num_trts_singletons = numel(setdiff(unique(out.cid), unique(out_nonsingle.cid)));
 
-disp(sprintf('Number of treatments: %d', total_num_trts))
+disp(sprintf('Number of conditions: %d', total_num_trts))
 
-disp(sprintf('Number of treatments in clusters: %d', num_trts_in_clusters))
+disp(sprintf('Number of conditions in clusters: %d', num_trts_in_clusters))
 
-disp(sprintf('Number of singleton, non-cluster treatments: %d', num_trts_singletons))
+disp(sprintf('Number of singleton, non-cluster conditions: %d', num_trts_singletons))
 
-disp(sprintf('Proportion of treatments in clusters: %f', num_trts_in_clusters / total_num_trts))
+disp(sprintf('Proportion of conditions in clusters: %f', num_trts_in_clusters / total_num_trts))
 
-disp(sprintf('Proportion of singleton, non-cluster treatments: %f', num_trts_singletons / total_num_trts))
+disp(sprintf('Proportion of singleton, non-cluster conditions: %f', num_trts_singletons / total_num_trts))
 
 % Save the outputs
 wtable(out_lap,fullfile(outdir, moa_k_values_filename))
@@ -250,16 +250,16 @@ mkgmt(fullfile(outdir, clusters_gmt_filename),gmt)
 
 if prepare_loocv
 
-    unique_kabx_cmpds_tbl = rtable(unique_kabx_cmpds_tbl_path);
+    unique_reference_set_cmpds_tbl = rtable(unique_reference_set_cmpds_tbl_path);
 
-    size(unique_kabx_cmpds_tbl)
-    headt(unique_kabx_cmpds_tbl)
+    size(unique_reference_set_cmpds_tbl)
+    headt(unique_reference_set_cmpds_tbl)
     
-    unique_kabx_cmpds_list = unique(unique_kabx_cmpds_tbl.kabx_cmpd);
+    unique_reference_set_cmpds_list = unique(unique_reference_set_cmpds_tbl.reference_set_cmpd);
 
-    length(unique_kabx_cmpds_list)
+    length(unique_reference_set_cmpds_list)
     
-    number_of_cmpds_loocv = length(unique_kabx_cmpds_list)
+    number_of_cmpds_loocv = length(unique_reference_set_cmpds_list)
     
     index_cmpds_loocv = 1:number_of_cmpds_loocv;
     
@@ -272,13 +272,13 @@ if prepare_loocv
        elseif strcmp(demo_loocv_number_or_list, 'list')
            number_of_cmpds_loocv = length(demo_loocv_list_cmpds)
            
-           index_cmpds_loocv = find(ismember(unique_kabx_cmpds_list, demo_loocv_list_cmpds))'
+           index_cmpds_loocv = find(ismember(unique_reference_set_cmpds_list, demo_loocv_list_cmpds))'
        else
            error('Invalid input for demo_loocv_number_or_list: number or list')
        end
     end
     
-    disp(sprintf('Number of KABX compounds to be processed in LOOCV: %d', length(index_cmpds_loocv)))
+    disp(sprintf('Number of reference set compounds to be processed in LOOCV: %d', length(index_cmpds_loocv)))
     
     for i = index_cmpds_loocv
 
@@ -288,9 +288,9 @@ if prepare_loocv
             fprintf('Currently at iteration %d\n', i);
         end
 
-        leave_out_cmpd = unique_kabx_cmpds_list(i);
+        leave_out_cmpd = unique_reference_set_cmpds_list(i);
         
-        loo_wkdir = fullfile(wkdir, strcat(results_subdir_prefix, strjoin(unique_kabx_cmpds_list(i))));
+        loo_wkdir = fullfile(wkdir, strcat(results_subdir_prefix, strjoin(unique_reference_set_cmpds_list(i))));
 
         mk_cd_dir(loo_wkdir, false);
         
@@ -427,15 +427,15 @@ if prepare_loocv
 
         num_trts_singletons = numel(setdiff(unique(out.cid), unique(out_nonsingle.cid)));
 
-        disp(sprintf('Number of treatments: %d', total_num_trts))
+        disp(sprintf('Number of conditions: %d', total_num_trts))
 
-        disp(sprintf('Number of treatments in clusters: %d', num_trts_in_clusters))
+        disp(sprintf('Number of conditions in clusters: %d', num_trts_in_clusters))
 
-        disp(sprintf('Number of singleton, non-cluster treatments: %d', num_trts_singletons))
+        disp(sprintf('Number of singleton, non-cluster conditions: %d', num_trts_singletons))
 
-        disp(sprintf('Proportion of treatments in clusters: %f', num_trts_in_clusters / total_num_trts))
+        disp(sprintf('Proportion of conditions in clusters: %f', num_trts_in_clusters / total_num_trts))
 
-        disp(sprintf('Proportion of singleton, non-cluster treatments: %f', num_trts_singletons / total_num_trts))
+        disp(sprintf('Proportion of singleton, non-cluster conditions: %f', num_trts_singletons / total_num_trts))
         
         
         % Save the outputs

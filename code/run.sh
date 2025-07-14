@@ -1,31 +1,24 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -ex
 
-#$ -l h_vmem=64G
-#$ -l h_rt=3:00:00
-#$ -j y
-#$ -R y
-#$ -cwd
-#$ -m beas
-#$ -M abond@broadinstitute.org
+# This is the master script for the capsule. When you click "Reproducible Run", the code in this file will execute.
 
-cd /idi/cgtb/code_prep_for_code_ocean/code
+matlab -nodisplay -r "ver; addpath(genpath('.'), '-begin'); subset_moas; moa_concordance_analysis; run_spectral_clustering; run_pcl_similarity_scoring; annotate_results; run_pcl_confidence_scoring; quit"
 
-source $HOME/.my.bashrc
-#matlab -nodisplay -r "addpath(genpath('.')); subset_moas; moa_concordance_analysis; run_spectral_clustering; quit"
-#matlab -nodisplay -r "addpath(genpath('.')); run_pcl_similarity_scoring; annotate_results; quit"
-matlab -nodisplay -r "addpath(genpath('.'), '-begin'); run_pcl_confidence_scoring; quit"
-
-#matlab -nodisplay -r "addpath(genpath('.'), '-begin'); subset_moas; moa_concordance_analysis; run_spectral_clustering; run_pcl_similarity_scoring; annotate_results; run_pcl_confidence_scoring; quit"
-
-# Path to final RMarkdown file
-RMD_FILE="/code/combine_loocv_and_make_moa_predictions.Rmd"
+# Path to final RMarkdown file from original, reported cluster results found using Matlab 2020a
+RMD_FILE="/code/combine_loocv_and_make_moa_predictions_using_original_pcl_clusters.Rmd"
 
 # Final output file name and format
-OUTPUT_FILE="/results/combine_loocv_and_make_moa_predictions_output.html"
+OUTPUT_FILE="/results/combine_loocv_and_make_moa_predictions_using_original_pcl_clusters_output.html"
 
 # Run the final RMarkdown file
 Rscript -e "rmarkdown::render('$RMD_FILE', output_file = '$OUTPUT_FILE', clean = TRUE)"
 
-# Report resource consumption because it's not reported by default
-echo "------------------------------"
-qstat -j $JOB_ID | grep '^usage'
+# Path to final RMarkdown file from demo cluster results found locally using Matlab 2020b
+RMD_FILE="/code/combine_loocv_and_make_moa_predictions_using_demo_pcl_clusters.Rmd"
+
+# Final output file name and format
+OUTPUT_FILE="/results/combine_loocv_and_make_moa_predictions_using_demo_pcl_clusters_output.html"
+
+# Run the final RMarkdown file
+Rscript -e "rmarkdown::render('$RMD_FILE', output_file = '$OUTPUT_FILE', clean = TRUE)"
