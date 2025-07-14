@@ -2,14 +2,14 @@ function run_concordance_analysis(wkdir,c_corr,c_corr_rank,gmt,makefig,figdir,ma
 
 % Function to subset, save as individual gctx files, 
 % and plot the correlation and rank of correlation matrices 
-% for each MOA or treatment cluster (from spectral clustering)
+% for each MOA or condition cluster (from spectral clustering)
 % saves a '*_corr_summary.txt' file 
 % 
-% by default, average rank in correlation (symmetrized between pairs of treatments) is highlighted in the range of 1 to 160
+% by default, average rank in correlation (symmetrized between pairs of conditions) is highlighted in the range of 1 to 160
 %
 % c_corr - path to or correlation matrix gct object
 % c_corr_rank - path to or rank of correlation matrix gct object
-% gmt - path to or gmt object with MOA or treatment cluster information
+% gmt - path to or gmt object with MOA or condition cluster information
 % makefig - boolean to make figures
 % figdir - directory to save figures
 % makegct - boolean to save gct files (in addition to gctx)
@@ -46,7 +46,7 @@ for ii = 1:numel(gmt)
 	loop_progress(ii, numel(gmt), 20)
 	out(ii).head = {strrep(gmt(ii).head,'"','')};
 	out(ii).desc = {gmt(ii).desc};
-	out(ii).size = gmt(ii).len; % number of dsCGI profiles/treatments
+	out(ii).size = gmt(ii).len; % number of CGI profiles/conditions
 
 	ridx = ismember(c_corr.rid, gmt(ii).entry);
 	cidx = ismember(c_corr.cid, gmt(ii).entry);
@@ -95,7 +95,7 @@ for ii = 1:numel(gmt)
 				set(gca,'YTickLabel',c_corr.rid(ridx))
 				set(gca,'XTickLabel',[])
 				set(gca,'FontSize',12)
-				title(sprintf('Pearson correlation for: %s\nMedian correlation:<%.1f>\nMedian rank in correlation across KABX:<%.1f>', out(ii).head{1}, out(ii).median_corr, out(ii).median_corr_rank),'FontSize',30)
+				title(sprintf('Pearson correlation for: %s\nMedian correlation:<%.1f>\nMedian rank in correlation across reference set:<%.1f>', out(ii).head{1}, out(ii).median_corr, out(ii).median_corr_rank),'FontSize',30)
 			saveas_png(gcf,fullfile(wkdir,figdir),[strrep(strrep(strrep(strrep(out(ii).head{1},' ','_'),'|','_'),'/','-'),':','-'),'_corr.png'])
 			close(gcf)
 			
@@ -112,7 +112,7 @@ for ii = 1:numel(gmt)
 				set(gca,'YTickLabel',c_corr.rid(ridx))
 				set(gca,'XTickLabel',[])
 				set(gca,'FontSize',12)
-				title(sprintf('Average rank in Pearson correlation across KABX: %s\nMedian correlation:<%.1f>\nMedian rank in correlation across KABX:<%.1f>', out(ii).head{1}, out(ii).median_corr, out(ii).median_corr_rank),'FontSize',30)
+				title(sprintf('Average rank in Pearson correlation across reference set: %s\nMedian correlation:<%.1f>\nMedian rank in correlation across reference set:<%.1f>', out(ii).head{1}, out(ii).median_corr, out(ii).median_corr_rank),'FontSize',30)
 			saveas_png(gcf,fullfile(wkdir,figdir),[strrep(strrep(strrep(strrep(out(ii).head{1},' ','_'),'|','_'),'/','-'),':','-'),'_corr_rank.png'])
 			close(gcf)
 		end

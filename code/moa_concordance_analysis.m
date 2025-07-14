@@ -12,11 +12,11 @@ prepare_loocv = true
 
 demo_loocv = true
 
-demo_loocv_number_or_list = 'number' % 'number' or 'list'
+demo_loocv_number_or_list = 'list' % 'number' or 'list'
 
 demo_loocv_number_cmpds = 1
 
-demo_loocv_list_cmpds = {'BRD-K04804440','BRD-K01507359','BRD-K87202646','BRD-K59853741', 'BRD-K27302037'} % Ciprofloxacin, Rifampin, Isoniazid, Q203, Thioacetazone
+demo_loocv_list_cmpds = {'BRD-K04804440','BRD-K01507359'} % Ciprofloxacin, Rifampin
 
 results_subdir_prefix = 'loocv_pcls/leave_out_cmpd_'
 
@@ -26,7 +26,7 @@ loocv_save_gct = false % greater memory consumption than .gctx but can be opened
 
 loocv_show_hclust = false % apply hierarchical clustering to MOA correlation and rank of correlation matrices before plotting
 
-unique_kabx_cmpds_tbl_path = '../results/kabx_pert_ids_tbl_for_loocv.txt'
+unique_reference_set_cmpds_tbl_path = '../results/reference_set_pert_ids_tbl_for_loocv.txt'
 
 % inputs
 
@@ -48,7 +48,7 @@ figdir = 'verify_moas/figures'
 
 gctdir = 'verify_moas/gcts'
 
-% # Run MOA concordance analysis - correlation and average rank of correlation across KABX for dsCGI profiles from each MOA
+% # Run MOA concordance analysis - correlation and average rank of correlation across reference set for CGI profiles from each MOA
 
 % # Subsets and saves individual gctx files for each MOA for quicker access during next step of spectral clustering and offers visualization of correlation and rank of correlation heatmaps
 
@@ -69,16 +69,16 @@ disp('Done')
 
 if prepare_loocv
 
-    unique_kabx_cmpds_tbl = rtable(unique_kabx_cmpds_tbl_path);
+    unique_reference_set_cmpds_tbl = rtable(unique_reference_set_cmpds_tbl_path);
 
-    size(unique_kabx_cmpds_tbl)
-    headt(unique_kabx_cmpds_tbl)
+    size(unique_reference_set_cmpds_tbl)
+    headt(unique_reference_set_cmpds_tbl)
     
-    unique_kabx_cmpds_list = unique(unique_kabx_cmpds_tbl.kabx_cmpd);
+    unique_reference_set_cmpds_list = unique(unique_reference_set_cmpds_tbl.reference_set_cmpd);
 
-    length(unique_kabx_cmpds_list)
+    length(unique_reference_set_cmpds_list)
     
-    number_of_cmpds_loocv = length(unique_kabx_cmpds_list)
+    number_of_cmpds_loocv = length(unique_reference_set_cmpds_list)
     
     index_cmpds_loocv = 1:number_of_cmpds_loocv;
     
@@ -91,13 +91,13 @@ if prepare_loocv
        elseif strcmp(demo_loocv_number_or_list, 'list')
            number_of_cmpds_loocv = length(demo_loocv_list_cmpds)
            
-           index_cmpds_loocv = find(ismember(unique_kabx_cmpds_list, demo_loocv_list_cmpds))'
+           index_cmpds_loocv = find(ismember(unique_reference_set_cmpds_list, demo_loocv_list_cmpds))'
        else
            error('Invalid input for demo_loocv_number_or_list: number or list')
        end
     end
     
-    disp(sprintf('Number of KABX compounds to be processed in LOOCV: %d', length(index_cmpds_loocv)))
+    disp(sprintf('Number of reference set compounds to be processed in LOOCV: %d', length(index_cmpds_loocv)))
 
     for i = index_cmpds_loocv
 
@@ -107,9 +107,9 @@ if prepare_loocv
             fprintf('Currently at iteration %d\n', i);
         end
 
-        leave_out_cmpd = unique_kabx_cmpds_list(i);
+        leave_out_cmpd = unique_reference_set_cmpds_list(i);
 
-        loo_wkdir = fullfile(wkdir, strcat(results_subdir_prefix, strjoin(unique_kabx_cmpds_list(i))));
+        loo_wkdir = fullfile(wkdir, strcat(results_subdir_prefix, strjoin(unique_reference_set_cmpds_list(i))));
 
         mk_cd_dir(loo_wkdir, false);
         

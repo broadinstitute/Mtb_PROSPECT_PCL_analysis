@@ -5,7 +5,7 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 	%
 	% Inputs:
 	% c - correlation coefficients for all members of the MOA class (gct structure or string)
-	% cr - pairwise average rank of correlation coefficients across KABX for all members of the MOA class (gct structure or string)
+	% cr - pairwise average rank of correlation coefficients across reference set for all members of the MOA class (gct structure or string)
 	% moa_class - MOA class (string)
 	% thrsh - threshold to convert cr to adjacency matrix (numeric)
 	% k_type - approach for estimating number of K clusters
@@ -16,7 +16,7 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 	% show_hclust - boolean to apply hierarchical clustering to correlation matrix prior to running spectral clustering, whether or not this is performed can minimally impact final cluster results especially for larger MOAs with greater number of K clusters due to stochasticity (randomized initialization) of k-means++ clustering; original results did apply hierarchical clustering but this step is not required for the method to be successful
 	%
 	% spectral clustering is performed using adjacency matrix created from the pairwise average rank of correlation coefficients
-	% adjacency matrix is created by thresholding treatment pairs based on their average rank of correlation coefficients for thrsh (or less) mutual nearest-neighbors
+	% adjacency matrix is created by thresholding condition pairs based on their average rank of correlation coefficients for thrsh (or less) mutual nearest-neighbors
 	% since the adjacency matrix is used: 'Distance','precomputed' is set for spectral clustering
 	% Ng-Jordan-Weiss method normalized Laplacian is computed from adjacency matrix: 'LaplacianNormalization','symmetric' is set for spectral clustering
 	%
@@ -118,7 +118,7 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 	    %caxis([1,thrsh*2])
 		caxis([1,thrsh+1])
 	    colorbar
-	    title(sprintf('Average rank in Pearson\ncorrelation across KABX'))
+	    title(sprintf('Average rank in Pearson\ncorrelation across reference set'))
 
 		if show_hclust
 		    s1_hc = subplot(5+plot_row_spacer,2,1+plot_spacer);
@@ -135,12 +135,12 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 		    %caxis([1,thrsh*2])
 			caxis([1,thrsh+1])
 		    colorbar
-		    title(sprintf('Average rank in Pearson\ncorrelation across KABX\n(re-sorted by hierarchical clustering)'))
+		    title(sprintf('Average rank in Pearson\ncorrelation across reference set\n(re-sorted by hierarchical clustering)'))
 		end
 
 		s3 = subplot(5+plot_row_spacer,2,3+plot_spacer);
 		imagesc(adj_mat)
-		colormap(s3, [1,1,1; 1,0,0.5])  % 1 for connected treatments, 0 for unconnected treatments
+		colormap(s3, [1,1,1; 1,0,0.5])  % 1 for connected conditions, 0 for unconnected conditions
 		caxis([0, 1])
 		colorbar('Ticks', [0, 1], 'TickLabels', {'0', '1'})  % Set colorbar ticks and labels
 		title(sprintf('Adjacency matrix\n(thresholded at %d)', thrsh))
@@ -174,7 +174,7 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 	
 	tmp = repmat(idx,1,size(adj_mat,2));
 	tmp_plot = tmp;
-	tmp = tmp==tmp'; % symmetric, block, logical matrix where 1 means the two treatments are in the same cluster, 0 otherwise
+	tmp = tmp==tmp'; % symmetric, block, logical matrix where 1 means the two conditions are in the same cluster, 0 otherwise
 	if any(~isfinite(tmp(:)))
 		error('Non-finite values found in tmp. All values must be finite.');
 	end
@@ -184,10 +184,10 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 	% Create output tables
 	col_meta_tmp = cell2table([cr.cid,cr.cdesc],'VariableNames',['cid';cr.chd]);
 	
-	cluster_id = conncomp(tmp_g)'; % get cluster numbers (ids) for each treatment, note: these are different numerically than idx (from spectralcluster) but the same in terms of cluster membership; the actual number/id is arbitrary
+	cluster_id = conncomp(tmp_g)'; % get cluster numbers (ids) for each condition, note: these are different numerically than idx (from spectralcluster) but the same in terms of cluster membership; the actual number/id is arbitrary
 	out = table(cluster_id);
 
-	%%% Annotate the treatment/cid
+	%%% Annotate the condition/cid
 	out.cid = cr.rid;
 
 	cluster_size = array2table(tabulate(cluster_id),'VariableNames',{'cluster_id','cluster_size','percent'});
@@ -198,7 +198,7 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 
 	disp('Success creating output table');
 
-	%%% Cluster membership error check - check cluster ids are accurately annotated to treatment after outerjoin operation %%%
+	%%% Cluster membership error check - check cluster ids are accurately annotated to condition after outerjoin operation %%%
 	checkOutTable = sortrows(out(:, {'cid', 'cluster_id'}), {'cluster_id', 'cid'});
 
 	checkTable = table(cr.cid, cluster_id, 'VariableNames', {'cid', 'cluster_id'});
@@ -216,7 +216,7 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 		error('Non-finite values found in tmp_cluster_id. All values must be finite.');
 	end
 	
-	tmp_cluster_id(~tmp) = 0; % apply the logical, block matrix to set the treatments that are not in the same cluster to 0 and keep the treatments that are in the same cluster as the numeric cluster_id
+	tmp_cluster_id(~tmp) = 0; % apply the logical, block matrix to set the conditions that are not in the same cluster to 0 and keep the conditions that are in the same cluster as the numeric cluster_id
 
 	if any(~isfinite(tmp_cluster_id(:)))
 		error('Non-finite values found in tmp_cluster_id after applying logical, block matrix. All values must be finite.');
@@ -242,9 +242,9 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 
 	[orig_check, orig_indices] = ismember(out.cid, c_orig.cid);
 
-	assert(all(orig_check), 'Problem sorting cluster membership matrix by original treatment order')
+	assert(all(orig_check), 'Problem sorting cluster membership matrix by original condition order')
     
-	tmp_cluster_id_sorted_by_orig_trt_order = tmp_cluster_id(orig_indices, orig_indices); % sort the block matrix by the original treatment order of the correlation matrix
+	tmp_cluster_id_sorted_by_orig_trt_order = tmp_cluster_id(orig_indices, orig_indices); % sort the block matrix by the original condition order of the correlation matrix
 	disp('Success creating block matrix with cluster IDs');
 		disp('Plotting spectral clustering output matrices and graphs');
 
@@ -254,7 +254,7 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 	    %colormap(s6, lines(k+1)) % different color for each cluster ID
 		caxis([0,k])
 		colorbar 
-		title(sprintf('Clusters from spectral clustering (k = %d)\n(original treatment order)',k))
+		title(sprintf('Clusters from spectral clustering (k = %d)\n(original condition order)',k))
 
 		s7 = subplot(5+plot_row_spacer,2,7+plot_spacer);
 		disp(tmp_g);
@@ -262,9 +262,9 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 		%f = findobj(s7);
 		%f(2).NodeFontSize = 6;
 		if show_hclust
-			title(sprintf('Graphs from spectral clustering (k = %d)\n(row index is hierarchical clustering treatment order)', k))
+			title(sprintf('Graphs from spectral clustering (k = %d)\n(row index is hierarchical clustering condition order)', k))
 		else
-			title(sprintf('Graphs from spectral clustering (k = %d)\n(row index is original treatment order)', k))
+			title(sprintf('Graphs from spectral clustering (k = %d)\n(row index is original condition order)', k))
 		end
 		
 		s8 = subplot(5+plot_row_spacer,2,8+plot_spacer);
@@ -289,7 +289,7 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 		%caxis([1,thrsh*2])
 		caxis([1,thrsh+1])
 		colorbar
-		title(sprintf('Average rank in Pearson\ncorrelation across KABX\n(re-sorted by cluster)'))
+		title(sprintf('Average rank in Pearson\ncorrelation across reference set\n(re-sorted by cluster)'))
 
 		disp('Success plotting spectral clustering output matrices and graphs');
 
@@ -299,7 +299,7 @@ function [out_nonsingle,out,gmt,Ln,k,en,den,k_gap_den,k_med_gap_den,k_num_zero_p
 	end
 
     out.group_id = strcat(moa_class,':group',any2str(out.cluster_id));
-	idx = out.cluster_size>1; % only keep clusters with more than one treatment
+	idx = out.cluster_size>1; % only keep clusters with more than one condition
 	if sum(idx)>0
 		out_nonsingle = out(idx,:);
 		%out_nonsingle.group_id = strcat(moa_class,':group',any2str(out_nonsingle.cluster_id));

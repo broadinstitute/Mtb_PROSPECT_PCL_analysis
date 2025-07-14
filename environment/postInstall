@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -e
+
+git clone --depth 1 https://github.com/cmap/cmapM
+
+cd cmapM
+
+#matlab -nodisplay -r "setup; savepath; movefile('/cmapM/sig_tools/ext/startup/startup.m', '/cmapM/sig_tools/ext/startup/mortar_startup.m')"
+
+matlab -nodisplay -r "addpath(genpath('$PWD')); savepath; movefile('/cmapM/sig_tools/ext/startup/startup.m', '/cmapM/sig_tools/ext/startup/mortar_startup.m')"

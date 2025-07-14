@@ -1,0 +1,492 @@
+{
+	"version": 1,
+	"base_image": "registry.codeocean.com/codeocean/matlab:2020b-ubuntu20.04",
+	"args": [
+		"MLM_LICENSE_FILE"
+	],
+	"post_install": true,
+	"options": {},
+	"installers": {
+		"apt": {
+			"packages": [
+				{
+					"name": "appstream",
+					"version": "0.12.10-2"
+				},
+				{
+					"name": "build-essential",
+					"version": "12.8ubuntu1.1"
+				},
+				{
+					"name": "cmake",
+					"version": "3.16.3-1ubuntu1.20.04.1"
+				},
+				{
+					"name": "curl",
+					"version": "7.68.0-1ubuntu2.24"
+				},
+				{
+					"name": "dmsetup",
+					"version": "2:1.02.167-1ubuntu1"
+				},
+				{
+					"name": "elpa-ess",
+					"version": "18.10.2-2focal0"
+				},
+				{
+					"name": "gcc",
+					"version": "4:9.3.0-1ubuntu2"
+				},
+				{
+					"name": "gfortran",
+					"version": "4:9.3.0-1ubuntu2"
+				},
+				{
+					"name": "gstreamer1.0-tools",
+					"version": "1.16.3-0ubuntu1.1"
+				},
+				{
+					"name": "isoquery",
+					"version": "3.2.3-1"
+				},
+				{
+					"name": "libblas-dev",
+					"version": "3.9.0-1build1"
+				},
+				{
+					"name": "libcairo2-dev",
+					"version": "1.16.0-4ubuntu1"
+				},
+				{
+					"name": "libcurl4-doc",
+					"version": "7.68.0-1ubuntu2.24"
+				},
+				{
+					"name": "libcurl4-openssl-dev",
+					"version": "7.68.0-1ubuntu2.24"
+				},
+				{
+					"name": "libfile-mimeinfo-perl",
+					"version": "0.29-1"
+				},
+				{
+					"name": "libfontconfig1-dev",
+					"version": "2.13.1-2ubuntu3"
+				},
+				{
+					"name": "libfreetype6-dev",
+					"version": "2.10.1-2ubuntu0.3"
+				},
+				{
+					"name": "libfribidi-dev",
+					"version": "1.0.8-2ubuntu0.1"
+				},
+				{
+					"name": "libgcrypt20-doc",
+					"version": "1.8.5-5ubuntu1.1"
+				},
+				{
+					"name": "libgit2-dev",
+					"version": "0.28.4+dfsg.1-2ubuntu0.1"
+				},
+				{
+					"name": "libharfbuzz-dev",
+					"version": "2.6.4-1ubuntu4.2"
+				},
+				{
+					"name": "libidn11-dev",
+					"version": "1.33-2.2ubuntu2"
+				},
+				{
+					"name": "libjpeg-dev",
+					"version": "8c-2ubuntu8"
+				},
+				{
+					"name": "libkrb5-dev",
+					"version": "1.17-6ubuntu4.7"
+				},
+				{
+					"name": "liblapack-dev",
+					"version": "3.9.0-1build1"
+				},
+				{
+					"name": "libldap2-dev",
+					"version": "2.4.49+dfsg-2ubuntu1.10"
+				},
+				{
+					"name": "libmbedtls-doc",
+					"version": "2.16.4-1ubuntu2"
+				},
+				{
+					"name": "libnet-dbus-perl",
+					"version": "1.2.0-1"
+				},
+				{
+					"name": "libnss-systemd",
+					"version": "245.4-4ubuntu3.24"
+				},
+				{
+					"name": "libpam-cap",
+					"version": "1:2.32-1ubuntu0.1"
+				},
+				{
+					"name": "libpng-dev",
+					"version": "1.6.37-2"
+				},
+				{
+					"name": "librtmp-dev",
+					"version": "2.4+20151223.gitfa8646d.1-2build1"
+				},
+				{
+					"name": "libssl-dev",
+					"version": "1.1.1f-1ubuntu2.23"
+				},
+				{
+					"name": "libssl-doc",
+					"version": "1.1.1f-1ubuntu2.23"
+				},
+				{
+					"name": "libtiff5-dev",
+					"version": "4.1.0+git191117-2ubuntu0.20.04.14"
+				},
+				{
+					"name": "libx11-protocol-perl",
+					"version": "0.56-7"
+				},
+				{
+					"name": "libxml2-dev",
+					"version": "2.9.10+dfsg-5ubuntu0.20.04.7"
+				},
+				{
+					"name": "networkd-dispatcher",
+					"version": "2.1-2~ubuntu20.04.3"
+				},
+				{
+					"name": "packagekit-tools",
+					"version": "1.1.13-2ubuntu1.1"
+				},
+				{
+					"name": "pandoc",
+					"version": "2.5-3build2"
+				},
+				{
+					"name": "pkg-config",
+					"version": "0.29.1-0ubuntu4"
+				},
+				{
+					"name": "python-apt-doc",
+					"version": "2.0.1ubuntu0.20.04.1"
+				},
+				{
+					"name": "python-dbus-doc",
+					"version": "1.2.16-1build1"
+				},
+				{
+					"name": "python3-apt-dbg",
+					"version": "2.0.1ubuntu0.20.04.1"
+				},
+				{
+					"name": "python3-cryptography",
+					"version": "2.8-3ubuntu0.3"
+				},
+				{
+					"name": "python3-dbus-dbg",
+					"version": "1.2.16-1build1"
+				},
+				{
+					"name": "python3-openssl",
+					"version": "19.0.0-1build1"
+				},
+				{
+					"name": "python3-socks",
+					"version": "1.6.8+dfsg-1ubuntu1"
+				},
+				{
+					"name": "r-base",
+					"version": "4.4.1-1.2004.0"
+				},
+				{
+					"name": "r-base-core",
+					"version": "4.4.1-1.2004.0"
+				},
+				{
+					"name": "r-base-html",
+					"version": "4.4.1-1.2004.0"
+				},
+				{
+					"name": "r-doc-html",
+					"version": "4.4.1-1.2004.0"
+				},
+				{
+					"name": "r-doc-info",
+					"version": "4.4.1-1.2004.0"
+				},
+				{
+					"name": "r-doc-pdf",
+					"version": "4.4.1-1.2004.0"
+				},
+				{
+					"name": "r-mathlib",
+					"version": "4.4.1-1.2004.0"
+				},
+				{
+					"name": "r-recommended",
+					"version": "4.4.1-1.2004.0"
+				},
+				{
+					"name": "rng-tools",
+					"version": "5-1ubuntu2"
+				},
+				{
+					"name": "shared-mime-info",
+					"version": "1.15-1"
+				},
+				{
+					"name": "systemd-container",
+					"version": "245.4-4ubuntu3.24"
+				},
+				{
+					"name": "tcl8.6",
+					"version": "8.6.10+dfsg-1"
+				},
+				{
+					"name": "tk8.6",
+					"version": "8.6.10-1"
+				},
+				{
+					"name": "unattended-upgrades",
+					"version": "2.3ubuntu0.3"
+				},
+				{
+					"name": "x11-utils",
+					"version": "7.7+5"
+				},
+				{
+					"name": "x11-xserver-utils",
+					"version": "7.7+8"
+				},
+				{
+					"name": "xdg-user-dirs",
+					"version": "0.17-2ubuntu1"
+				},
+				{
+					"name": "xfonts-base",
+					"version": "1:1.0.5"
+				},
+				{
+					"name": "xvfb",
+					"version": "2:1.20.13-1ubuntu1~20.04.17"
+				}
+			],
+			"sources": [
+				"deb https://cloud.r-project.org/bin/linux/ubuntu focal-cran40/",
+				"deb https://mirror.linux.ncsu.edu/ubuntu/ focal-backports main restricted universe"
+			],
+			"gpg_keys": [
+				"E298A3A825C0D65DFD57CBB651716619E084DAB9"
+			],
+			"install_software_properties_common": true
+		},
+		"rbioconductor": {
+			"packages": [
+				{
+					"name": "BiocVersion",
+					"version": "3.19.1"
+				},
+				{
+					"name": "cmapR",
+					"version": "1.16.0"
+				}
+			],
+			"r_version": "4.4.1",
+			"install_bioconductor": true
+		},
+		"rcran": {
+			"packages": [
+				{
+					"name": "BiocManager",
+					"version": "1.30.25"
+				},
+				{
+					"name": "MatrixModels",
+					"version": "0.5-3"
+				},
+				{
+					"name": "Rcpp",
+					"version": "1.0.13"
+				},
+				{
+					"name": "RcppEigen",
+					"version": "0.3.4.0.2"
+				},
+				{
+					"name": "carData",
+					"version": "3.0-5"
+				},
+				{
+					"name": "caret",
+					"version": "6.0-94"
+				},
+				{
+					"name": "conflicted",
+					"version": "1.2.0"
+				},
+				{
+					"name": "corrplot",
+					"version": "0.95"
+				},
+				{
+					"name": "data.table",
+					"version": "1.16.2"
+				},
+				{
+					"name": "dbplyr",
+					"version": "2.5.0"
+				},
+				{
+					"name": "devEMF",
+					"version": "4.5"
+				},
+				{
+					"name": "doBy",
+					"version": "4.6.24"
+				},
+				{
+					"name": "drda",
+					"version": "2.0.4"
+				},
+				{
+					"name": "dtplyr",
+					"version": "1.3.1"
+				},
+				{
+					"name": "export",
+					"version": "0.3.0"
+				},
+				{
+					"name": "fontquiver",
+					"version": "0.2.1"
+				},
+				{
+					"name": "ggpubr",
+					"version": "0.6.0"
+				},
+				{
+					"name": "ggrepel",
+					"version": "0.9.5"
+				},
+				{
+					"name": "ggsci",
+					"version": "3.2.0"
+				},
+				{
+					"name": "ggsignif",
+					"version": "0.6.4"
+				},
+				{
+					"name": "googlesheets4",
+					"version": "1.1.1"
+				},
+				{
+					"name": "gridExtra",
+					"version": "2.3"
+				},
+				{
+					"name": "haven",
+					"version": "2.5.4"
+				},
+				{
+					"name": "janitor",
+					"version": "2.2.0"
+				},
+				{
+					"name": "knitr",
+					"version": "1.48"
+				},
+				{
+					"name": "lubridate",
+					"version": "1.9.3"
+				},
+				{
+					"name": "numDeriv",
+					"version": "2016.8-1.1"
+				},
+				{
+					"name": "officer",
+					"version": "0.6.6"
+				},
+				{
+					"name": "openxlsx",
+					"version": "4.2.7"
+				},
+				{
+					"name": "pROC",
+					"version": "1.18.5"
+				},
+				{
+					"name": "polynom",
+					"version": "1.4-1"
+				},
+				{
+					"name": "readxl",
+					"version": "1.4.3"
+				},
+				{
+					"name": "remotes",
+					"version": "2.5.0"
+				},
+				{
+					"name": "reprex",
+					"version": "2.1.1"
+				},
+				{
+					"name": "rgl",
+					"version": "1.3.1"
+				},
+				{
+					"name": "rmarkdown",
+					"version": "2.28"
+				},
+				{
+					"name": "rvest",
+					"version": "1.0.4"
+				},
+				{
+					"name": "scales",
+					"version": "1.3.0"
+				},
+				{
+					"name": "selectr",
+					"version": "0.4-2"
+				},
+				{
+					"name": "stargazer",
+					"version": "5.2.3"
+				},
+				{
+					"name": "systemfonts",
+					"version": "1.1.0"
+				},
+				{
+					"name": "textshaping",
+					"version": "0.4.0"
+				},
+				{
+					"name": "tictoc",
+					"version": "1.2.1"
+				},
+				{
+					"name": "tidyverse",
+					"version": "2.0.0"
+				},
+				{
+					"name": "xtable",
+					"version": "1.8-4"
+				}
+			],
+			"cran_mirror": "https://cloud.r-project.org/",
+			"detect_cpus": true,
+			"install_remotes": true
+		}
+	}
+}
