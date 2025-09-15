@@ -10,6 +10,14 @@ We previously reported an antibiotic discovery screening platform that identifie
 
 We thank Rob Bates and GlaxoSmithKline for kindly providing the TB set compounds for both primary screening and follow-up studies. RNA-Seq libraries were constructed and sequenced by the Infectious Disease and Microbiome Program’s Microbial Omics Core at the Broad Institute of MIT and Harvard. Funding for this work was provided by Bill and Melinda Gates Foundation (OPP1084233 D.T.H., INV-040933 D.T.H., INV-064678 D.T.H.), the Broad Institute Tuberculosis donor group, and the Pershing Square Foundation.
 
+## Code and Data Availability Links
+
+Code Ocean: https://doi.org/10.24433/CO.3013890.v1
+
+GitHub: https://github.com/broadinstitute/Mtb_PROSPECT_PCL_analysis
+
+Figshare: https://doi.org/10.6084/m9.figshare.28373561
+
 ## System Requirements
 - **Operating System:** Red Hat Enterprise Linux Server 7.9 (Maipo) (original analysis); Ubuntu 20.04 (local demo); other Linux-based systems may work
 - **Matlab Versions:** Originally run on Matlab 2020a, demo on Matlab 2020b
