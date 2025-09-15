@@ -1,34 +1,25 @@
 metadata_version: 1
 name: Reference-based chemical-genetic interaction profiling to elucidate small molecule
   mechanism of action in Mycobacterium tuberculosis
-description: In an era of increasing resistance, new and effective strategies are
-  needed for antibiotic discovery. Whole-cell active screens yield candidate compounds
-  lacking mechanism-of-action (MOA) information, and thus do not provide biological
-  insight for prioritization. We previously reported PROSPECT (**PR**imary screening
-  **O**f **S**trains to **P**rioritize **E**xpanded **C**hemistry and **T**argets),
-  an antimicrobial discovery strategy that measures chemical-genetic interactions
-  between small molecules and a pool of *Mycobacterium tuberculosis* mutants, each
-  depleted of a different essential protein target. PROSPECT facilitates efficient
-  hit prioritization by simultaneously identifying whole-cell active compounds with
-  high sensitivity and providing early insights into their MOA. Here, we report a
-  reference-based approach to infer MOA from often complex PROSPECT data. For this
-  aim, we curated a reference set of 437 compounds with published, annotated MOA and
-  known or suspected antitubercular activity, and applied PROSPECT to it. We then
-  developed **P**erturbagen **CL**ass (PCL) analysis, a computational method that
-  predicts MOA by comparing chemical-genetic interaction profiles of unknown compounds
-  to those of this reference set. In leave-one-out cross-validation, PCL analysis
-  correctly predicted MOA with 70% sensitivity and 75% precision. When applied to
-  75 antitubercular leads with known MOA previously reported by GlaxoSmithKline (GSK),
-  PCL analysis similarly achieved 69% sensitivity and 87% precision. We also analyzed
-  98 GSK compounds lacking MOA information, predicting 60 of them to act via a reference
-  MOA, and followed up with functional validation of 29 compounds predicted to target
-  respiration-related MOAs. Finally, we applied PROSPECT and PCL analysis to ~5,000
-  compounds from larger unbiased libraries that had not been preselected for antitubercular
-  activity. PCL analysis identified a novel scaffold lacking wild-type activity but
-  predicted to inhibit respiration via QcrB, and we confirmed this prediction while
-  chemically optimizing this scaffold to achieve wild-type activity. PCL analysis
-  of PROSPECT data thus enables rapid MOA assignment and hit prioritization, advancing
-  the discovery of new, potent antitubercular compounds.
+description: We previously reported an antibiotic discovery screening platform that
+  identifies whole-cell active compounds with high sensitivity while simultaneously
+  providing mechanistic insight, necessary for hit prioritization. Named PROSPECT,
+  (PRimary screening Of Strains to Prioritize Expanded Chemistry and Targets), this
+  platform measures chemical-genetic interactions between small molecules and pooled
+  Mycobacterium tuberculosis mutants, each depleted of a different essential protein.
+  Here, we introduce Perturbagen CLass (PCL) analysis, a computational method that
+  infers a compound's mechanism-of-action (MOA) by comparing its chemical-genetic
+  interaction profile to those of a curated reference set of 437 known molecules.
+  In leave-one-out cross-validation, we correctly predict MOA with 70% sensitivity
+  and 75% precision, and achieve comparable results (69% sensitivity, 87% precision)
+  with a test set of 75 antitubercular compounds with known MOA previously reported
+  by GlaxoSmithKline (GSK). From 98 additional GSK antitubercular compounds with unknown
+  MOA, we predict 60 to act via a reference MOA and functionally validate 29 compounds
+  predicted to target respiration. Finally, from a set of ~5,000 compounds from larger
+  unbiased libraries, we identify a novel QcrB-targeting scaffold that initially lacked
+  wild-type activity, experimentally confirming this prediction while chemically optimizing
+  this scaffold. PCL analysis of PROSPECT data enables rapid MOA assignment and hit
+  prioritization, streamlining antimicrobial discovery.
 tags:
 - Drug discovery
 - Target identification
@@ -36,6 +27,14 @@ tags:
 - Small molecules
 - bacteria
 - Mycobacterium tuberculosis
+- chemical genetics
+- infectious diseases
+- Computational Biology
+- Bioinformatics
+- Microbiology
+- reference-based
+- chemical-genetic interaction screening data
+- Mechanism of Action
 authors:
 - name: Austin Nathaniel Bond
   affiliations:
@@ -67,7 +66,7 @@ authors:
 - name: Emily Gath
   affiliations:
   - name: Broad Institute of MIT and Harvard
-- name: Aaron Golas
+- name: A. Lorelei Golas
   affiliations:
   - name: Broad Institute of MIT and Harvard
 - name: Raymond Nietupski
